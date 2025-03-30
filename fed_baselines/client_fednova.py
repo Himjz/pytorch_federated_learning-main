@@ -1,3 +1,4 @@
+## 客户端计算能力和数据量差异较大的场景中表现出色，能够自适应地调整客户端的更新权重，提高训练效率。
 import copy
 from fed_baselines.client_base import FedClient
 from utils.models import *

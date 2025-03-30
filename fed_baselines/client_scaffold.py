@@ -1,3 +1,5 @@
+## 在客户端实现的联邦学习优化算法，可在此基础上增加夏普利值等客户端的联邦学习参数优化
+## 适用于数据非独立同分布问题较为严重的场景，通过控制变量可以有效缓解数据分布差异带来的影响。
 from fed_baselines.client_base import FedClient
 import copy
 from utils.models import *

@@ -1,3 +1,4 @@
+## 客户端数据的分布差异较大时，FedProx 通过近端项对本地模型更新进行约束，可以避免客户端模型偏离全局模型太远，从而提高模型在全局数据上的收敛速度和泛化能力。
 from fed_baselines.client_base import FedClient
 import copy
 from utils.models import *

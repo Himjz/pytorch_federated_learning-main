@@ -1,3 +1,4 @@
+## 客户端基类，实现客户端模型初始化和模型加载、更新、训练
 from utils.models import *
 from torch.utils.data import DataLoader
 from utils.fed_utils import assign_dataset, init_model
