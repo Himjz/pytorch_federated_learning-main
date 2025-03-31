@@ -1,13 +1,14 @@
+import os
+
+import PIL
 import torch
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.data import Subset
 from tqdm import tqdm
-from torch.utils.data import Subset, DataLoader
-import os
-import PIL
 
 
-def load_data(name, root='./data', download=True, save_pre_data=True):
+def load_data(name, root='./data', download=True):
 
     data_dict = ['MNIST', 'EMNIST', 'FashionMNIST', 'CelebA', 'CIFAR10', 'QMNIST', 'SVHN', "IMAGENET", 'CIFAR100']
     assert name in data_dict, "The dataset is not present"
@@ -103,7 +104,7 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='emnist', i_seed=
 
     torch.manual_seed(i_seed)
 
-    trainset, testset, len_classes = load_data(dataset_name, download=True, save_pre_data=False)
+    trainset, testset, len_classes = load_data(dataset_name, download=True)
 
     num_classes = len_classes
     if num_local_class == -1:
