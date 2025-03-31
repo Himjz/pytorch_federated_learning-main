@@ -1,10 +1,9 @@
 import os
-
 import PIL
 import torch
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import Subset
+from torch.utils.data import Subset, DataLoader
 from tqdm import tqdm
 
 
@@ -17,30 +16,36 @@ def load_data(name, root='./data', download=True):
         os.makedirs(root, exist_ok=True)
 
     if name == 'MNIST':
-        transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,), (0.3081,))])
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         trainset = torchvision.datasets.MNIST(root=root, train=True, download=download, transform=transform)
         testset = torchvision.datasets.MNIST(root=root, train=False, download=download, transform=transform)
 
     elif name == 'EMNIST':
         # byclass, bymerge, balanced, letters, digits, mnist
-        transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,), (0.3081,))])
-        trainset = torchvision.datasets.EMNIST(root=root, train=True, split= 'letters', download=download, transform=transform)
-        testset = torchvision.datasets.EMNIST(root=root, train=False, split= 'letters', download=download, transform=transform)
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+        trainset = torchvision.datasets.EMNIST(root=root, train=True, split='letters', download=download,
+                                               transform=transform)
+        testset = torchvision.datasets.EMNIST(root=root, train=False, split='letters', download=download,
+                                              transform=transform)
 
     elif name == 'FashionMNIST':
-        transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5,), (0.5,))])
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
         trainset = torchvision.datasets.FashionMNIST(root=root, train=True, download=download, transform=transform)
         testset = torchvision.datasets.FashionMNIST(root=root, train=False, download=download, transform=transform)
 
     elif name == 'CelebA':
         # Could not loaded possibly for google drive break downs, try again at week days
         target_transform = transforms.Compose([transforms.ToTensor()])
-        transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-        trainset = torchvision.datasets.CelebA(root=root, split='train', target_type=list, download=download, transform=transform, target_transform=target_transform)
-        testset = torchvision.datasets.CelebA(root=root, split='test', target_type=list, download=download, transform=transform, target_transform=target_transform)
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        trainset = torchvision.datasets.CelebA(root=root, split='train', target_type=list, download=download,
+                                               transform=transform, target_transform=target_transform)
+        testset = torchvision.datasets.CelebA(root=root, split='test', target_type=list, download=download,
+                                              transform=transform, target_transform=target_transform)
 
     elif name == 'CIFAR10':
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])])
+        transform = transforms.Compose([transforms.ToTensor(),
+                                        transforms.Normalize(mean=[0.4914, 0.4822, 0.4465],
+                                                             std=[0.2023, 0.1994, 0.2010])])
         trainset = torchvision.datasets.CIFAR10(root=root, train=True, download=download, transform=transform)
         testset = torchvision.datasets.CIFAR10(root=root, train=False, download=download, transform=transform)
         trainset.targets = torch.Tensor(trainset.targets)
@@ -54,12 +59,14 @@ def load_data(name, root='./data', download=True):
         testset.targets = torch.Tensor(testset.targets)
 
     elif name == 'QMNIST':
-        transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,), (0.3081,))])
-        trainset = torchvision.datasets.QMNIST(root=root, what='train', compat=True, download=download, transform=transform)
-        testset = torchvision.datasets.QMNIST(root=root, what='test', compat=True, download=download, transform=transform)
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+        trainset = torchvision.datasets.QMNIST(root=root, what='train', compat=True, download=download,
+                                               transform=transform)
+        testset = torchvision.datasets.QMNIST(root=root, what='test', compat=True, download=download,
+                                              transform=transform)
 
     elif name == 'SVHN':
-        transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,), (0.3081,))])
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         trainset = torchvision.datasets.SVHN(root=root, split='train', download=download, transform=transform)
         testset = torchvision.datasets.SVHN(root=root, split='test', download=download, transform=transform)
         trainset.targets = torch.Tensor(trainset.labels)
@@ -85,7 +92,7 @@ def load_data(name, root='./data', download=True):
 
     len_classes_dict = {
         'MNIST': 10,
-        'EMNIST': 26, # ByClass: 62. ByMerge: 814,255 47.Digits: 280,000 10.Letters: 145,600 26.MNIST: 70,000 10.
+        'EMNIST': 26,  # ByClass: 62. ByMerge: 814,255 47.Digits: 280,000 10.Letters: 145,600 26.MNIST: 70,000 10.
         'FashionMNIST': 10,
         'CelebA': 0,
         'CIFAR10': 10,
@@ -96,15 +103,19 @@ def load_data(name, root='./data', download=True):
     }
 
     len_classes = len_classes_dict[name]
-    
+
     return trainset, testset, len_classes
 
 
-def divide_data(num_client=1, num_local_class=10, dataset_name='emnist', i_seed=0):
+def divide_data(num_client=1, num_local_class=10, dataset_name='emnist', i_seed=0,train_ratio:float=1.0):
 
     torch.manual_seed(i_seed)
 
     trainset, testset, len_classes = load_data(dataset_name, download=True)
+    ## 修正取样比例，默认为100%，以实现批次递增训练
+    train_size = int(len(trainset) * train_ratio)
+    train_indices = torch.randperm(len(trainset))[:train_size]
+    trainset = Subset(trainset, train_indices)
 
     num_classes = len_classes
     if num_local_class == -1:
@@ -121,7 +132,7 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='emnist', i_seed=
     for i in range(num_client):
         config_class['f_{0:05d}'.format(i)] = []
         for j in range(num_local_class):
-            cls = (i+j) % num_classes
+            cls = (i + j) % num_classes
             if cls not in config_division:
                 config_division[cls] = 1
                 config_data[cls] = [0, []]
@@ -152,17 +163,15 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='emnist', i_seed=
             config_data[cls][0] += 1
         user_data_indexes = user_data_indexes.squeeze().int().tolist()
         user_data = Subset(trainset, user_data_indexes)
-        #user_targets = trainset.target[user_data_indexes.tolist()]
+        # user_targets = trainset.targets[user_data_indexes]
         trainset_config['users'].append(user)
         trainset_config['user_data'][user] = user_data
-        trainset_config['num_samples'] = len(user_data)
+        trainset_config['num_samples'].append(len(user_data))
 
-    #
     # test_loader = DataLoader(trainset_config['user_data']['f_00001'])
     # for i, (x,y) in enumerate(test_loader):
     #     print(i)
     #     print(y)
-
 
     return trainset_config, testset
 
