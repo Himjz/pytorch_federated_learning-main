@@ -15,6 +15,7 @@ from fed_baselines.client_fednova import FedNovaClient
 from fed_baselines.server_base import FedServer
 from fed_baselines.server_scaffold import ScaffoldServer
 from fed_baselines.server_fednova import FedNovaServer
+from fed_baselines.server_shapley import FedShapley
 
 from postprocessing.recorder import Recorder
 from preprocessing.baselines_dataloader import divide_data
@@ -101,6 +102,8 @@ def fed_run():
         fed_server = FedServer(trainset_config['users'], dataset_id=config["system"]["dataset"], model_name=config["system"]["model"])
     elif config["client"]["fed_algo"] == 'FedNova':
         fed_server = FedNovaServer(trainset_config['users'], dataset_id=config["system"]["dataset"], model_name=config["system"]["model"])
+    elif config["client"]["fed_algo"] == 'FedShapley':
+        fed_server = FedShapley(trainset_config['users'], dataset_id=config["system"]["dataset"], model_name=config["system"]["model"])
     fed_server.load_testset(testset)
     global_state_dict = fed_server.state_dict()
 
