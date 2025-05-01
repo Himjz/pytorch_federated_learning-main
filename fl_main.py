@@ -90,6 +90,8 @@ def fed_run():
             client_dict[client_id] = FedProxClient(client_id, dataset_id=config["system"]["dataset"], epoch=config["client"]["num_local_epoch"], model_name=config["system"]["model"])
         elif config["client"]["fed_algo"] == 'FedNova':
             client_dict[client_id] = FedNovaClient(client_id, dataset_id=config["system"]["dataset"], epoch=config["client"]["num_local_epoch"], model_name=config["system"]["model"])
+        elif config["client"]["fed_algo"] == 'FedShapley':
+            client_dict[client_id] = FedClient(client_id, dataset_id=config["system"]["dataset"], epoch=config["client"]["num_local_epoch"], model_name=config["system"]["model"])
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # Initialize the clients w.r.t. the federated learning algorithms and the specific federated settings
@@ -139,6 +141,8 @@ def fed_run():
         elif config["client"]["fed_algo"] == 'FedProx':
             global_state_dict, avg_loss, _ = fed_server.agg()
         elif config["client"]["fed_algo"] == 'FedNova':
+            global_state_dict, avg_loss, _ = fed_server.agg()
+        elif config["client"]["fed_algo"] == 'FedShapley':
             global_state_dict, avg_loss, _ = fed_server.agg()
 
         # Testing and flushing
