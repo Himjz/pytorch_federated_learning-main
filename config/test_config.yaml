@@ -4,7 +4,7 @@ system:
   dataset: "MNIST"
   model: "LeNet"
   i_seed: 235235
-  num_round: 2000
+  num_round: 100
   res_root: "results"
 
 client:
