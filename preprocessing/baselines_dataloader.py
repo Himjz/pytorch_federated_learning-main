@@ -5,6 +5,7 @@ from tqdm import tqdm
 from torch.utils.data import Subset, DataLoader
 import os
 import PIL
+import self_dataloader
 
 
 def load_data(name, root='./data', download=True, save_pre_data=True):
@@ -82,6 +83,7 @@ def load_data(name, root='./data', download=True, save_pre_data=True):
         trainset.targets = torch.Tensor(trainset.targets)
         testset.targets = torch.Tensor(testset.targets)
 
+
     len_classes_dict = {
         'MNIST': 10,
         'EMNIST': 26, # ByClass: 62. ByMerge: 814,255 47.Digits: 280,000 10.Letters: 145,600 26.MNIST: 70,000 10.
@@ -103,7 +105,11 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='emnist', i_seed=
 
     torch.manual_seed(i_seed)
 
-    trainset, testset, len_classes = load_data(dataset_name, download=True, save_pre_data=False)
+    if dataset_name == 'SelfDataset':
+        trainset, testset = self_dataloader.split_dataset('..\\Data', 0.8)
+        len_classes = 3
+    else:
+        trainset, testset, len_classes = load_data(dataset_name, download=True, save_pre_data=False)
 
     num_classes = len_classes
     if num_local_class == -1:
