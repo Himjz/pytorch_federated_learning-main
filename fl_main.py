@@ -61,7 +61,7 @@ def fed_run():
         except yaml.YAMLError as exc:
             print(exc)
     
-    algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova"]
+    algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova", "FedShapley"]
     assert config["client"]["fed_algo"] in algo_list, "The federated learning algorithm is not supported"
 
     dataset_list = ['MNIST', 'CIFAR10', 'FashionMNIST', 'SVHN', 'CIFAR100']
