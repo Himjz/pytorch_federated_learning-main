@@ -16,9 +16,10 @@ def load_data(name, root='dt', download=True, save_pre_data=True):
     if name == 'SelfDataSet':
         # 定义数据转换
         transform = transforms.Compose([
-            transforms.Resize((803,803)),  # 调整图像大小
+            transforms.Resize((803, 803)),  # 调整图像大小
+            transforms.Grayscale(num_output_channels=1),  # 转换为灰度图
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            transforms.Normalize(mean=[0.485], std=[0.229])  # 灰度图只有一个通道，调整归一化参数
         ])
         # 加载训练集
         trainset = torchvision.datasets.ImageFolder(root=os.path.join(root, 'train'), transform=transform)

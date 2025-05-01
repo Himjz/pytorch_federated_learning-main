@@ -44,7 +44,7 @@ def assign_dataset(dataset_name):
     elif dataset_name == 'SelfDataSet':
         num_class = 4
         image_dim = 28
-        image_channel = 3
+        image_channel = 1
     else:
         # 若数据集名称不支持，抛出异常
         raise ValueError(f"不支持的数据集名称: {dataset_name}")
