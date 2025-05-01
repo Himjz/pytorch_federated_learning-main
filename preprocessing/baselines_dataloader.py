@@ -5,7 +5,7 @@ from tqdm import tqdm
 from torch.utils.data import Subset, DataLoader
 import os
 import PIL
-import self_dataloader
+from preprocessing import self_dataloader
 
 
 def load_data(name, root='./data', download=True, save_pre_data=True):
@@ -106,7 +106,7 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='emnist', i_seed=
     torch.manual_seed(i_seed)
 
     if dataset_name == 'SelfDataset':
-        trainset, testset = self_dataloader.split_dataset('..\\Data', 0.8)
+        trainset, testset = self_dataloader.split_dataset('Data', 0.8)
         len_classes = 3
     else:
         trainset, testset, len_classes = load_data(dataset_name, download=True, save_pre_data=False)

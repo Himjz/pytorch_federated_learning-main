@@ -34,25 +34,3 @@ def split_dataset(data_dir, train_ratio=0.8, transform=transform):
     # 创建测试集数据加载器
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
     return train_loader, test_loader
-
-
-# 划分数据集并获取数据加载器
-train_loader, test_loader = split_dataset('..\\Data', 0.8)
-print(train_loader.targets)
-# 收集训练集标签
-train_labels = []
-for _, labels in train_loader:
-    train_labels.extend(labels.tolist())
-
-# 收集测试集标签
-test_labels = []
-for _, labels in test_loader:
-    test_labels.extend(labels.tolist())
-
-# 打印所有标签
-print("训练集标签:", train_labels)
-print("测试集标签:", test_labels)
-
-# 示例：遍历训练集
-for images, labels in train_loader:
-    print(f"Images shape: {images.shape}, Labels shape: {labels.shape}")
