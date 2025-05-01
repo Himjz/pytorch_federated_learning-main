@@ -45,7 +45,7 @@ def split_data(source_dir, train_dir, test_dir, split_ratio=0.8):
 
 if __name__ == "__main__":
     # 请根据实际情况修改这些目录路径
-    source_directory = '../Data'
+    source_directory = '../Dataset'
     train_directory = 'train'
     test_directory = 'val'
     # 调用函数进行数据划分

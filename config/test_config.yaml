@@ -1,7 +1,7 @@
 system:
   num_client: 5
   num_local_class: 2
-  dataset: 'SelfDataset'
+  dataset: 'SelfDataSet'
   model: "LeNet"
   i_seed: 235235
   num_round: 100

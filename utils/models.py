@@ -53,20 +53,37 @@ class LeNet(nn.Module):
         super(LeNet, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 6, 5, padding=2)
         self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        # 先不初始化全连接层，后续动态计算输入维度
+        self.fc1 = None
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
 
-    def forward(self, x):
-        out = F.relu(self.conv1(x), inplace=True)  # 6 x 28 x 28
-        out = F.max_pool2d(out, 2)  # 6 x 14 x 14
-        out = F.relu(self.conv2(out), inplace=True)  # 16 x 7 x 7
-        out = F.max_pool2d(out, 2)   # 16 x 5 x 5
-        out = out.view(out.size(0), -1)  # 16 x 5 x 5
-        out = F.relu(self.fc1(out), inplace=True)
-        out = F.relu(self.fc2(out), inplace=True)
-        out = self.fc3(out)
+    def _get_flatten_size(self, x):
+        """
+        计算卷积和池化操作后特征图展平后的尺寸
+        :param x: 输入张量
+        :return: 展平后的尺寸
+        """
+        x = F.relu(self.conv1(x), inplace=True)
+        x = F.max_pool2d(x, 2)
+        x = F.relu(self.conv2(x), inplace=True)
+        x = F.max_pool2d(x, 2)
+        return x.view(x.size(0), -1).size(1)
 
+    def forward(self, x):
+        if self.fc1 is None:
+            # 第一次前向传播时计算全连接层的输入维度
+            flatten_size = self._get_flatten_size(x)
+            self.fc1 = nn.Linear(flatten_size, 120).to(x.device)
+
+        out = F.relu(self.conv1(x), inplace=True)  # 卷积层 1
+        out = F.max_pool2d(out, 2)  # 池化层 1
+        out = F.relu(self.conv2(out), inplace=True)  # 卷积层 2
+        out = F.max_pool2d(out, 2)  # 池化层 2
+        out = out.view(out.size(0), -1)  # 展平
+        out = F.relu(self.fc1(out), inplace=True)  # 全连接层 1
+        out = F.relu(self.fc2(out), inplace=True)  # 全连接层 2
+        out = self.fc3(out)  # 全连接层 3
         return out
 
 

@@ -129,6 +129,6 @@ dmypy.json
 .pyre/
 
 .idea/
-data/
+Dataset/
 ref_model
 results/

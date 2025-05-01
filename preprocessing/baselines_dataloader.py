@@ -1,11 +1,11 @@
+import os
+
+import PIL
 import torch
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.data import Subset
 from tqdm import tqdm
-from torch.utils.data import Subset, DataLoader
-import os
-import PIL
-from preprocessing import self_dataloader
 
 
 def load_data(name, root='./data', download=True, save_pre_data=True):
@@ -105,11 +105,7 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='emnist', i_seed=
 
     torch.manual_seed(i_seed)
 
-    if dataset_name == 'SelfDataset':
-        trainset, testset = self_dataloader.split_dataset('Data', 0.8)
-        len_classes = 3
-    else:
-        trainset, testset, len_classes = load_data(dataset_name, download=True, save_pre_data=False)
+    trainset, testset, len_classes = load_data(dataset_name, download=True, save_pre_data=False)
 
     num_classes = len_classes
     if num_local_class == -1:
@@ -174,8 +170,7 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='emnist', i_seed=
 
 if __name__ == "__main__":
     # 'MNIST', 'EMNIST', 'FashionMNIST', 'CelebA', 'CIFAR10', 'QMNIST', 'SVHN'
-    data_dict = ['MNIST', 'EMNIST', 'FashionMNIST', 'CIFAR10', 'QMNIST', 'SVHN']
+    data_dict = ['MNIST']
 
     for name in data_dict:
-        print(name)
-        divide_data(num_client=20, num_local_class=2, dataset_name=name, i_seed=0)
+        print(divide_data(num_client=20, num_local_class=2, dataset_name=name, i_seed=0))

@@ -1,36 +1,103 @@
-from torchvision import datasets, transforms
-from torch.utils.data import DataLoader, random_split
+import os
+import torch
+import torchvision
+import torchvision.transforms as transforms
+from torch.utils.data import Subset
 
-# 数据预处理
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),  # 调整图像大小
-    transforms.ToTensor(),  # 转换为张量
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # 归一化
-])
 
-def split_dataset(data_dir, train_ratio=0.8, transform=transform):
-    """
-    按给定比例划分数据集为训练集和测试集。
+def load_data(name, root='dt', download=True, save_pre_data=True):
+    # 这里仅支持 SelfDataSet
+    data_dict = ['SelfDataSet']
+    assert name in data_dict, "The dataset is not present"
 
-    Args:
-        data_dir (str): 数据集根目录，该目录下直接包含各类别的文件夹
-        train_ratio (float, optional): 训练集所占比例，默认 0.8
-        transform (callable, optional): 数据预处理转换操作，默认使用上面定义的 transform
+    if not os.path.exists(root):
+        os.makedirs(root, exist_ok=True)
 
-    Returns:
-        tuple: 包含训练集数据加载器和测试集数据加载器的元组
-    """
-    # 从根目录加载完整数据集
-    full_dataset = datasets.ImageFolder(root=data_dir, transform=transform)
-    # 计算训练集大小
-    train_size = int(train_ratio * len(full_dataset))
-    # 计算测试集大小
-    test_size = len(full_dataset) - train_size
-    # 划分数据集
-    train_dataset, test_dataset = random_split(full_dataset, [train_size, test_size])
+    if name == 'SelfDataSet':
+        # 定义数据转换
+        transform = transforms.Compose([
+            transforms.Resize((803,803)),  # 调整图像大小
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+        # 加载训练集
+        trainset = torchvision.datasets.ImageFolder(root=os.path.join(root, 'train'), transform=transform)
+        # 加载测试集
+        testset = torchvision.datasets.ImageFolder(root=os.path.join(root, 'val'), transform=transform)
 
-    # 创建训练集数据加载器
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    # 创建测试集数据加载器
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-    return train_loader, test_loader
+        # 将标签转换为张量
+        trainset.targets = torch.Tensor(trainset.targets)
+        testset.targets = torch.Tensor(testset.targets)
+
+
+    # 获取类别数量
+    len_classes = len(trainset.classes)
+
+    return trainset, testset, len_classes
+
+
+def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_seed=0):
+    torch.manual_seed(i_seed)
+
+    trainset, testset, len_classes = load_data(dataset_name, download=True, save_pre_data=False)
+
+    num_classes = len_classes
+    if num_local_class == -1:
+        num_local_class = num_classes
+    assert 0 < num_local_class <= num_classes, "number of local class should smaller than global number of class"
+
+    trainset_config = {'users': [],
+                       'user_data': {},
+                       'num_samples': 0}
+    config_division = {}  # Count of the classes for division
+    config_class = {}  # Configuration of class distribution in clients
+    config_data = {}  # Configuration of data indexes for each class : Config_data[cls] = [0, []] | pointer and indexes
+
+    for i in range(num_client):
+        config_class['f_{0:05d}'.format(i)] = []
+        for j in range(num_local_class):
+            cls = (i + j) % num_classes
+            if cls not in config_division:
+                config_division[cls] = 1
+                config_data[cls] = [0, []]
+            else:
+                config_division[cls] += 1
+            config_class['f_{0:05d}'.format(i)].append(cls)
+
+    # print(config_class)
+    # print(config_division)
+
+    for cls in config_division.keys():
+        indexes = torch.nonzero(trainset.targets == cls)
+        num_datapoint = indexes.shape[0]
+        indexes = indexes[torch.randperm(num_datapoint)]
+        num_partition = num_datapoint // config_division[cls]
+        for i_partition in range(config_division[cls]):
+            if i_partition == config_division[cls] - 1:
+                config_data[cls][1].append(indexes[i_partition * num_partition:])
+            else:
+                config_data[cls][1].append(indexes[i_partition * num_partition: (i_partition + 1) * num_partition])
+
+    total_samples = 0
+    for user in config_class.keys():
+        user_data_indexes = torch.tensor([])
+        for cls in config_class[user]:
+            user_data_index = config_data[cls][1][config_data[cls][0]]
+            user_data_indexes = torch.cat((user_data_indexes, user_data_index))
+            config_data[cls][0] += 1
+        user_data_indexes = user_data_indexes.squeeze().int().tolist()
+        user_data = Subset(trainset, user_data_indexes)
+        trainset_config['users'].append(user)
+        trainset_config['user_data'][user] = user_data
+        total_samples += len(user_data)
+
+    trainset_config['num_samples'] = total_samples
+
+    return trainset_config, testset
+
+
+if __name__ == "__main__":
+    data_dict = ['SelfDataSet']
+
+    for name in data_dict:
+        print(divide_data(num_client=5, num_local_class=2, dataset_name=name, i_seed=0))
