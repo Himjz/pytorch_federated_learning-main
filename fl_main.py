@@ -132,6 +132,11 @@ def fed_run():
                 state_dict, n_data, loss, coeff, norm_grad = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, coeff, norm_grad)
 
+            elif config["client"]["fed_algo"] == 'FedShapley':
+                client_dict[client_id].update(global_state_dict)
+                state_dict, n_data, loss = client_dict[client_id].train()
+                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
+
         # Global aggregation
         fed_server.select_clients()
         if config["client"]["fed_algo"] == 'FedAvg':

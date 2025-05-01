@@ -9,7 +9,6 @@ class FedShapley(server_base.FedServer):
         self.client_data_sizes = {}
         self.client_losses = {}
 
-
     def agg(self):
         # 计算所有客户端的夏普利值
         shapley_values = self.calculate_shapley_values()
@@ -37,6 +36,8 @@ class FedShapley(server_base.FedServer):
         self.client_states[name] = state_dict
         self.client_data_sizes[name] = n_data
         self.client_losses[name] = loss
+        # 确保客户端数据量被记录到 server_base 的 client_n_data 中
+        self.client_n_data[name] = n_data
 
     def calculate_shapley_values(self):
         clients = list(self.client_states.keys())
