@@ -54,7 +54,7 @@ class LeNet(nn.Module):
         self.conv1 = nn.Conv2d(in_channels, 6, 5, padding=2)
         self.conv2 = nn.Conv2d(6, 16, 5)
         # 先不初始化全连接层，后续动态计算输入维度
-        self.fc1 = nn.Linear(350464, 120) ## 订正新的代码
+        self.fc1 = nn.Linear(85264, 120) ## 订正新的代码
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
 

@@ -16,7 +16,7 @@ def load_data(name, root='dt', download=True, save_pre_data=True):
     if name == 'SelfDataSet':
         # 定义数据转换
         transform = transforms.Compose([
-            transforms.Resize((603, 603)),  # 调整图像大小
+            transforms.Resize((300, 300)),  # 调整图像大小
             transforms.Grayscale(num_output_channels=1),  # 转换为灰度图
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485], std=[0.229])  # 灰度图只有一个通道，调整归一化参数
