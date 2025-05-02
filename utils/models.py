@@ -47,34 +47,30 @@ class AlexCifarNet(nn.Module):
 
 # LeNet model customized for MNIST with 61706 parameters
 class LeNet(nn.Module):
-    supported_dims = {28}
+    supported_dims = {300}
 
     def __init__(self, num_classes=10, in_channels=1):
         super(LeNet, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 6, 5, padding=2)
         self.conv2 = nn.Conv2d(6, 16, 5)
-        # 先不初始化全连接层，后续动态计算输入维度
-        self.fc1 = nn.Linear(85264, 120) ## 订正新的代码
+        # 先不初始化 fc1，后续动态计算
+        self.fc1 = None
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, num_classes)
-
-    def _get_flatten_size(self, x):
-        """
-        计算卷积和池化操作后特征图展平后的尺寸
-        :param x: 输入张量
-        :return: 展平后的尺寸
-        """
-        x = F.relu(self.conv1(x), inplace=True)
-        x = F.max_pool2d(x, 2)
-        x = F.relu(self.conv2(x), inplace=True)
-        x = F.max_pool2d(x, 2)
-        return x.view(x.size(0), -1).size(1)
 
     def forward(self, x):
         if self.fc1 is None:
             # 第一次前向传播时计算全连接层的输入维度
-            flatten_size = self._get_flatten_size(x)
-            self.fc1 = nn.Linear(flatten_size, 120).to(x.device)
+            with torch.no_grad():
+                test_out = x
+                test_out = F.relu(self.conv1(test_out), inplace=True)  # 卷积层 1
+                test_out = F.max_pool2d(test_out, 2)  # 池化层 1
+                test_out = F.relu(self.conv2(test_out), inplace=True)  # 卷积层 2
+                test_out = F.max_pool2d(test_out, 2)  # 池化层 2
+                test_out = test_out.view(test_out.size(0), -1)  # 展平
+                flatten_size = test_out.size(1)
+                self.fc1 = nn.Linear(flatten_size, 120).to(x.device)
+                # print(f"动态计算的 fc1 输入维度为: {flatten_size}")
 
         out = F.relu(self.conv1(x), inplace=True)  # 卷积层 1
         out = F.max_pool2d(out, 2)  # 池化层 1

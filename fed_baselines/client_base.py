@@ -52,11 +52,12 @@ class FedClient(object):
 
     def update(self, model_state_dict):
         """
-        Client updates the model from the server.
-        :param model_state_dict: Global model.
+        更新客户端模型的状态字典
+        :param model_state_dict: 全局模型的状态字典
         """
-        self.model = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
-        self.model.load_state_dict(model_state_dict)
+        # 加载状态字典并忽略不匹配的键
+        self.model.load_state_dict(model_state_dict, strict=False)
+        # print("成功加载模型状态字典，忽略不匹配的键")
 
     def train(self):
         """
