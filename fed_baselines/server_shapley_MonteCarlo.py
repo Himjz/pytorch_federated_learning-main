@@ -65,6 +65,12 @@ class FedShapley(server_base.FedServer):
         for client in shapley_values.keys():
             shapley_values[client] /= self.monte_carlo_samples
 
+        # 归一化夏普利值
+        total_shapley = sum(shapley_values.values())
+        if total_shapley != 0:
+            for client in shapley_values.keys():
+                shapley_values[client] /= total_shapley
+
         return shapley_values
 
     def evaluate_subset(self, subset):
