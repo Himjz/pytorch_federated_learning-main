@@ -33,7 +33,8 @@ class FedShapley(server_base.FedServer):
             for key in aggregated_state_dict.keys():
                 aggregated_state_dict[key] += shapley_value * client_state[key]
             avg_loss += client_loss * (client_data / total_data) if total_data > 0 else 0
-
+        self.round = self.round + 1
+        self.model.load_state_dict(aggregated_state_dict)
         return aggregated_state_dict, avg_loss, total_data
 
     def rec(self, name, state_dict, n_data, loss):
