@@ -70,7 +70,6 @@ class FedShapley(server_base.FedServer):
         if total_shapley != 0:
             for client in shapley_values.keys():
                 shapley_values[client] /= total_shapley
-
         return shapley_values
 
     def evaluate_subset(self, subset):
