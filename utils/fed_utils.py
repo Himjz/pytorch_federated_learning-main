@@ -17,40 +17,37 @@ def assign_dataset(dataset_name):
         num_class = 10
         image_dim = 28
         image_channel = 1
-
     elif dataset_name == 'FashionMNIST':
         num_class = 10
         image_dim = 28
         image_channel = 1
-
     elif dataset_name == 'EMNIST':
         num_class = 27
         image_dim = 28
         image_channel = 1
-
     elif dataset_name == 'CIFAR10':
-
         num_class = 10
         image_dim = 32
         image_channel = 3
-
     elif dataset_name == 'CIFAR100':
-
         num_class = 100
         image_dim = 32
         image_channel = 3
-
     elif dataset_name == 'SVHN':
-
         num_class = 10
         image_dim = 32
         image_channel = 3
-
     elif dataset_name == 'IMAGENET':
-
         num_class = 200
         image_dim = 64
         image_channel = 3
+    elif dataset_name == 'SelfDataSet':
+        num_class = 4
+        image_dim = 28
+        image_channel = 1
+    else:
+        # 若数据集名称不支持，抛出异常
+        raise ValueError(f"不支持的数据集名称: {dataset_name}")
 
     return num_class, image_dim, image_channel
 
