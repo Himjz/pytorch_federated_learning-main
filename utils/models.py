@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torchvision.models as models
 import numpy as np
 from collections import OrderedDict
+import torchvision.transforms as transforms
 
 """
 We provide the models, which might be used in the experiments on FedD3, as follows:
@@ -46,27 +47,50 @@ class AlexCifarNet(nn.Module):
 
 
 # LeNet model customized for MNIST with 61706 parameters
-class LeNet(nn.Module):
-    supported_dims = {28}
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-    def __init__(self, num_classes=10, in_channels=1):
+class LeNet(nn.Module):
+    supported_dims = {300}
+
+    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
         super(LeNet, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, 6, 5, padding=2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_classes)
+        # 验证输入尺寸是否支持
+        if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
+            raise ValueError(f"输入尺寸 {input_size} 不被支持，支持的尺寸为 {self.supported_dims}")
+        self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(2, 2)
+        # 提前计算全连接层的输入维度
+        with torch.no_grad():
+            test_input = torch.randn(1, in_channels, *input_size)
+            test_output = F.leaky_relu(self.conv1(test_input), inplace=True)
+            test_output = self.pool(test_output)
+            test_output = F.leaky_relu(self.conv2(test_output), inplace=True)
+            test_output = self.pool(test_output)
+            test_output = F.leaky_relu(self.conv3(test_output), inplace=True)
+            test_output = self.pool(test_output)
+            test_output = test_output.view(test_output.size(0), -1)
+            flatten_size = test_output.size(1)
+        self.fc1 = nn.Linear(flatten_size, 256)
+        self.dropout = nn.Dropout(0.5)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, num_classes)
 
     def forward(self, x):
-        out = F.relu(self.conv1(x), inplace=True)  # 6 x 28 x 28
-        out = F.max_pool2d(out, 2)  # 6 x 14 x 14
-        out = F.relu(self.conv2(out), inplace=True)  # 16 x 7 x 7
-        out = F.max_pool2d(out, 2)   # 16 x 5 x 5
-        out = out.view(out.size(0), -1)  # 16 x 5 x 5
-        out = F.relu(self.fc1(out), inplace=True)
-        out = F.relu(self.fc2(out), inplace=True)
+        out = F.leaky_relu(self.conv1(x), inplace=True)
+        out = self.pool(out)
+        out = F.leaky_relu(self.conv2(out), inplace=True)
+        out = self.pool(out)
+        out = F.leaky_relu(self.conv3(out), inplace=True)
+        out = self.pool(out)
+        out = out.view(out.size(0), -1)
+        out = F.leaky_relu(self.fc1(out), inplace=True)
+        out = self.dropout(out)
+        out = F.leaky_relu(self.fc2(out), inplace=True)
         out = self.fc3(out)
-
         return out
 
 
