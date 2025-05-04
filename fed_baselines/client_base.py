@@ -67,10 +67,8 @@ class FedClient(object):
 
         self.model.to(self._device)
         optimizer = torch.optim.SGD(self.model.parameters(), lr=self._lr, momentum=self._momentum)
-        # optimizer = torch.optim.Adam(self.model.parameters(), lr=self._lr, weight_decay=1e-4)
         loss_func = nn.CrossEntropyLoss()
 
-        # Training process
         for epoch in range(self._epoch):
             for step, (x, y) in enumerate(train_loader):
                 with torch.no_grad():
