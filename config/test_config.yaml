@@ -9,7 +9,7 @@ system:
 
 client:
   fed_algo: "FedShapley"
-  lr: 0.1
+  lr: 0.000000001
   batch_size: 16
   num_local_epoch: 3
   momentum: 0.9
