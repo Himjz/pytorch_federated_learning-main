@@ -35,6 +35,7 @@ class FedShapley(server_base.FedServer):
             avg_loss += client_loss * (client_data / total_data) if total_data > 0 else 0
         self.round = self.round + 1
         self.model.load_state_dict(aggregated_state_dict)
+        total_data += 1
         return aggregated_state_dict, avg_loss, total_data
 
     def rec(self, name, state_dict, n_data, loss):
