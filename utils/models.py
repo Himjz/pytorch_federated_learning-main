@@ -50,9 +50,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class LeNet(nn.Module):
-    supported_dims = {300}
+    supported_dims = {28}    # 导入农业数据集时将该参数改为300
 
-    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
+    def __init__(self, num_classes=10, in_channels=1, input_size=(28, 28)):   # 导入农业数据集时将input_size改为(300, 300)
         super(LeNet, self).__init__()
         # 验证输入尺寸是否受支持
         if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
