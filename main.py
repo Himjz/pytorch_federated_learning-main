@@ -159,6 +159,8 @@ def fed_run():
             global_state_dict, avg_loss, _ = fed_server.agg()
         elif config["client"]["fed_algo"] == 'FedNova':
             global_state_dict, avg_loss, _ = fed_server.agg()
+        elif config['client']['fed_algo'] == 'FedDp' :
+            global_state_dict, avg_loss, _ = fed_server.agg()
 
         # 测试与刷新
         accuracy = fed_server.test()
