@@ -15,6 +15,7 @@ from fed_baselines.client_fednova import FedNovaClient
 from fed_baselines.server_base import FedServer
 from fed_baselines.server_scaffold import ScaffoldServer
 from fed_baselines.server_fednova import FedNovaServer
+from fed_baselines.client_feddp import FedDPClient
 
 from postprocessing.recorder import Recorder
 from preprocessing.baselines_dataloader import divide_data
@@ -60,7 +61,7 @@ def fed_run():
         except yaml.YAMLError as exc:
             print(exc)
 
-    algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova"]
+    algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova", 'FedDp']
     assert config["client"]["fed_algo"] in algo_list, "The federated learning algorithm is not supported"
 
     dataset_list = ['MNIST', 'CIFAR10', 'FashionMNIST', 'SVHN', 'CIFAR100']
@@ -99,6 +100,10 @@ def fed_run():
             client_dict[client_id] = FedNovaClient(client_id, dataset_id=config["system"]["dataset"],
                                                    epoch=config["client"]["num_local_epoch"],
                                                    model_name=config["system"]["model"])
+        elif config["client"]["fed_algo"] == 'FedDp':
+            client_dict[client_id] = FedDPClient(client_id, dataset_id=config["system"]["dataset"],
+                                               epoch=config["client"]["num_local_epoch"],
+                                               model_name=config["system"]["model"])
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # 根据联邦学习算法和特定的联邦设置初始化服务器
@@ -115,6 +120,9 @@ def fed_run():
     elif config["client"]["fed_algo"] == 'FedNova':
         fed_server = FedNovaServer(trainset_config['users'], dataset_id=config["system"]["dataset"],
                                    model_name=config["system"]["model"])
+    elif config["client"]["fed_algo"] == 'FedDp':
+        fed_server = FedServer(trainset_config['users'], dataset_id=config["system"]["dataset"],
+                               model_name=config["system"]["model"])
     fed_server.load_testset(testset)
     global_state_dict = fed_server.state_dict()
 
