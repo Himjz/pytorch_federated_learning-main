@@ -3,11 +3,11 @@ from utils.models import *
 
 def assign_dataset(dataset_name):
     """
-    Assign the parameters to a dataset
-    :param dataset_name: Dataset name
-    :return: num_class: Number of classes in the dataset
-    :return: image_dim: Image dimensions
-    :return: image_channel: Number of image channels
+    为数据集分配参数
+    :param dataset_name: 数据集名称
+    :return: num_class: 数据集中的类别数量
+    :return: image_dim: 图像尺寸
+    :return: image_channel: 图像通道数
     """
     num_class = -1
     image_dim = -1
@@ -54,11 +54,11 @@ def assign_dataset(dataset_name):
 
 def init_model(model_name, num_class, image_channel):
     """
-    Initialize the model for a specific learning task.
-    :param model_name: Model name
-    :param num_class: Number of classes in the dataset
-    :param image_channel: Number of image channels
-    :return: The initialized model
+    为特定的学习任务初始化模型。
+    :param model_name: 模型名称
+    :param num_class: 数据集中的类别数量
+    :param image_channel: 图像通道数
+    :return: 初始化后的模型
     """
     model = None
     if model_name == "ResNet18":
