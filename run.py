@@ -3,7 +3,7 @@ import subprocess
 
 # 定义要执行的命令，以列表形式存储，每个元素为命令的一部分
 # 此命令用于执行 Python 脚本 fl_main.py 并指定配置文件路径
-cmd = ['python', 'fl_main_only.py', '--config', './config/test_config.yaml']
+cmd = ['python', 'main.py', '--config', './config/test_config.yaml']
 
 # 调用 subprocess.run 函数执行命令
 # 不设置 capture_output 参数，命令的输出会直接显示在终端
