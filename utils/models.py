@@ -1,21 +1,19 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.models as models
-import numpy as np
 from collections import OrderedDict
-import torchvision.transforms as transforms
+
+import numpy as np
+import torch.nn as nn
+import torchvision.models as models
 
 """
-We provide the models, which might be used in the experiments on FedD3, as follows:
-    - AlexNet model customized for CIFAR-10 (AlexCifarNet) with 1756426 parameters
-    - LeNet model customized for MNIST with 61706 parameters
-    - Further ResNet models
-    - Further Vgg models
+我们提供了可能在 FedD3 实验中使用的模型，如下所示：
+    - 为 CIFAR-10 定制的 AlexNet 模型（AlexCifarNet），包含 1756426 个参数
+    - 为 MNIST 定制的 LeNet 模型，包含 61706 个参数
+    - 更多的 ResNet 模型
+    - 更多的 VGG 模型
 """
 
 
-# AlexNet model customized for CIFAR-10 with 1756426 parameters
+# 为 CIFAR-10 定制的 AlexNet 模型，包含 1756426 个参数
 class AlexCifarNet(nn.Module):
     supported_dims = {32}
 
@@ -46,7 +44,7 @@ class AlexCifarNet(nn.Module):
         return out
 
 
-# LeNet model customized for MNIST with 61706 parameters
+# 为 MNIST 定制的 LeNet 模型，包含 61706 个参数
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -56,9 +54,9 @@ class LeNet(nn.Module):
 
     def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
         super(LeNet, self).__init__()
-        # 验证输入尺寸是否支持
+        # 验证输入尺寸是否受支持
         if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
-            raise ValueError(f"输入尺寸 {input_size} 不被支持，支持的尺寸为 {self.supported_dims}")
+            raise ValueError(f"输入尺寸 {input_size} 不受支持，支持的尺寸为 {self.supported_dims}")
         self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
@@ -94,7 +92,7 @@ class LeNet(nn.Module):
         return out
 
 
-# Further ResNet models
+# 更多的 ResNet 模型
 def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
     if model_name == "ResNet18":
         model = models.resnet18(pretrained=True)
@@ -113,7 +111,7 @@ def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
     return model
 
 
-# Further Vgg models
+# 更多的 VGG 模型
 def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
     if model_name == "VGG11":
         model = models.vgg11(pretrained=False)
@@ -153,13 +151,13 @@ class CNN(nn.Module):
             ]))
 
         self.ternary_con2 = nn.Sequential(OrderedDict([
-            # Conv Layer block 1
+            # 卷积层模块 1
             ('conv1', nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1, bias=False)),
             ('norm1', nn.BatchNorm2d(64)),
             ('relu1', nn.ReLU(inplace=True)),
             ('pool1', nn.MaxPool2d(kernel_size=2, stride=2)),
 
-            # Conv Layer block 2
+            # 卷积层模块 2
             ('conv2', nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1, bias=False)),
             ('norm2', nn.BatchNorm2d(128)),
             ('relu2', nn.ReLU(inplace=True)),
@@ -169,7 +167,7 @@ class CNN(nn.Module):
             ('pool2', nn.MaxPool2d(kernel_size=2, stride=2)),
             # nn.Dropout2d(p=0.05),
 
-            # Conv Layer block 3
+            # 卷积层模块 3
             ('conv3', nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1, bias=False)),
             ('norm3', nn.BatchNorm2d(256)),
             ('relu3', nn.ReLU(inplace=True)),
