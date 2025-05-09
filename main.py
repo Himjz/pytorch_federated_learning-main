@@ -148,6 +148,10 @@ def fed_run():
                 client_dict[client_id].update(global_state_dict)
                 state_dict, n_data, loss, coeff, norm_grad = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, coeff, norm_grad)
+            elif config["client"]["fed_algo"] == 'FedDp':
+                client_dict[client_id].update(global_state_dict)
+                state_dict, n_data, loss = client_dict[client_id].train()
+                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
 
         # 全局聚合
         fed_server.select_clients()
