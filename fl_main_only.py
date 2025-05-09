@@ -190,7 +190,7 @@ def fed_run():
                                                              '\'%s\',' % config["system"]["model"] +
                                                              str(config["client"]["num_local_epoch"]) + ',' +
                                                              str(config["system"]["num_local_class"]) + ',' +
-                                                             str(config["system"]["i_seed"])) + ']', "w") as jsfile:
+                                                             str(config["system"]["i_seed"])) + '].json', "w") as jsfile:
             json.dump(recorder.res, jsfile, cls=PythonObjectEncoder)
 
 
