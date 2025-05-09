@@ -38,12 +38,12 @@ def as_python_object(dct):
 
 def fed_args():
     """
-    Arguments for running federated learning baselines
-    :return: Arguments for federated learning baselines
+    联邦学习基线运行所需的参数
+    :return: 联邦学习基线的参数
     """
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--config', type=str, required=True, help='Yaml file for configuration')
+    parser.add_argument('--config', type=str, required=True, help='用于配置的 YAML 文件')
 
     args = parser.parse_args()
     return args
@@ -51,7 +51,7 @@ def fed_args():
 
 def fed_run():
     """
-    Main function for the baselines of federated learning
+    联邦学习基线的主函数
     """
     args = fed_args()
     with open(args.config, "r") as yaml_file:
@@ -79,7 +79,7 @@ def fed_run():
     trainset_config, testset = divide_data(num_client=config["system"]["num_client"], num_local_class=config["system"]["num_local_class"], dataset_name=config["system"]["dataset"],
                                            i_seed=config["system"]["i_seed"])
     max_acc = 0
-    # Initialize the clients w.r.t. the federated learning algorithms and the specific federated settings
+    # 根据联邦学习算法和特定的联邦设置初始化客户端
     for client_id in trainset_config['users']:
         if config["client"]["fed_algo"] == 'FedAvg':
             client_dict[client_id] = FedClient(client_id, dataset_id=config["system"]["dataset"], epoch=config["client"]["num_local_epoch"], model_name=config["system"]["model"])
@@ -91,7 +91,7 @@ def fed_run():
             client_dict[client_id] = FedNovaClient(client_id, dataset_id=config["system"]["dataset"], epoch=config["client"]["num_local_epoch"], model_name=config["system"]["model"])
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
-    # Initialize the clients w.r.t. the federated learning algorithms and the specific federated settings
+    # 根据联邦学习算法和特定的联邦设置初始化服务器
     if config["client"]["fed_algo"] == 'FedAvg':
         fed_server = FedServer(trainset_config['users'], dataset_id=config["system"]["dataset"], model_name=config["system"]["model"])
     elif config["client"]["fed_algo"] == 'SCAFFOLD':
@@ -104,12 +104,12 @@ def fed_run():
     fed_server.load_testset(testset)
     global_state_dict = fed_server.state_dict()
 
-    # Main process of federated learning in multiple communication rounds
+    # 多轮通信的联邦学习主流程
 
     pbar = tqdm(range(config["system"]["num_round"]))
     for global_round in pbar:
         for client_id in trainset_config['users']:
-            # Local training
+            # 本地训练
             if config["client"]["fed_algo"] == 'FedAvg':
                 client_dict[client_id].update(global_state_dict)
                 state_dict, n_data, loss = client_dict[client_id].train()
@@ -127,22 +127,22 @@ def fed_run():
                 state_dict, n_data, loss, coeff, norm_grad = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, coeff, norm_grad)
 
-        # Global aggregation
+        # 全局聚合
         fed_server.select_clients()
         if config["client"]["fed_algo"] == 'FedAvg':
             global_state_dict, avg_loss, _ = fed_server.agg()
         elif config["client"]["fed_algo"] == 'SCAFFOLD':
-            global_state_dict, avg_loss, _, scv_state = fed_server.agg()  # scarffold
+            global_state_dict, avg_loss, _, scv_state = fed_server.agg()  # SCAFFOLD 算法
         elif config["client"]["fed_algo"] == 'FedProx':
             global_state_dict, avg_loss, _ = fed_server.agg()
         elif config["client"]["fed_algo"] == 'FedNova':
             global_state_dict, avg_loss, _ = fed_server.agg()
 
-        # Testing and flushing
+        # 测试与刷新
         accuracy = fed_server.test()
         fed_server.flush()
 
-        # Record the results
+        # 记录结果
         recorder.res['server']['iid_accuracy'].append(accuracy)
         recorder.res['server']['train_loss'].append(avg_loss)
 
@@ -154,7 +154,7 @@ def fed_run():
             '| Accuracy: %.4f' % accuracy +
             '| Max Acc: %.4f' % max_acc)
 
-        # Save the results
+        # 保存结果
         if not os.path.exists(config["system"]["res_root"]):
             os.makedirs(config["system"]["res_root"])
 
