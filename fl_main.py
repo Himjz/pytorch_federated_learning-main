@@ -20,6 +20,7 @@ from fed_baselines.server_shapley import FedShapley
 from postprocessing.recorder import Recorder
 from preprocessing.baselines_dataloader import divide_data
 from utils.models import *
+import time
 
 json_types = (list, dict, str, int, float, bool, type(None))
 
@@ -110,33 +111,106 @@ def fed_run():
     global_state_dict = fed_server.state_dict()
 
     # 多轮通信的联邦学习主流程
+    time_recorder = {
+        'local_train_time': [],
+        'model_transfer_time': [],
+        'global_agg_time': [],
+        'model_update_time': []
+    }
 
     pbar = tqdm(range(config["system"]["num_round"]))
     for global_round in pbar:
+        local_train_time_round = 0
+        model_transfer_time_round = 0
         for client_id in trainset_config['users']:
-            # 本地训练
+            # 本地训练计时
+            local_train_start = time.time()
             if config["client"]["fed_algo"] == 'FedAvg':
+                # 模型更新计时
+                model_update_start = time.time()
                 client_dict[client_id].update(global_state_dict)
-                state_dict, n_data, loss = client_dict[client_id].train()
-                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
-            elif config["client"]["fed_algo"] == 'SCAFFOLD':
-                client_dict[client_id].update(global_state_dict, scv_state)
-                state_dict, n_data, loss, delta_ccv_state = client_dict[client_id].train()
-                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, delta_ccv_state)
-            elif config["client"]["fed_algo"] == 'FedProx':
-                client_dict[client_id].update(global_state_dict)
-                state_dict, n_data, loss = client_dict[client_id].train()
-                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
-            elif config["client"]["fed_algo"] == 'FedNova':
-                client_dict[client_id].update(global_state_dict)
-                state_dict, n_data, loss, coeff, norm_grad = client_dict[client_id].train()
-                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, coeff, norm_grad)
-            elif config["client"]["fed_algo"] == 'FedShapley':
-                client_dict[client_id].update(global_state_dict)
-                state_dict, n_data, loss = client_dict[client_id].train()
-                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
+                model_update_end = time.time()
+                time_recorder['model_update_time'].append(model_update_end - model_update_start)
 
-        # 全局聚合
+                state_dict, n_data, loss = client_dict[client_id].train()
+                local_train_end = time.time()
+                local_train_time_round += local_train_end - local_train_start
+
+                # 模型传递计时
+                model_transfer_start = time.time()
+                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
+                model_transfer_end = time.time()
+                model_transfer_time_round += model_transfer_end - model_transfer_start
+            elif config["client"]["fed_algo"] == 'SCAFFOLD':
+                # 模型更新计时
+                model_update_start = time.time()
+                client_dict[client_id].update(global_state_dict, scv_state)
+                model_update_end = time.time()
+                time_recorder['model_update_time'].append(model_update_end - model_update_start)
+
+                state_dict, n_data, loss, delta_ccv_state = client_dict[client_id].train()
+                local_train_end = time.time()
+                local_train_time_round += local_train_end - local_train_start
+
+                # 模型传递计时
+                model_transfer_start = time.time()
+                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, delta_ccv_state)
+                model_transfer_end = time.time()
+                model_transfer_time_round += model_transfer_end - model_transfer_start
+            elif config["client"]["fed_algo"] == 'FedProx':
+                # 模型更新计时
+                model_update_start = time.time()
+                client_dict[client_id].update(global_state_dict)
+                model_update_end = time.time()
+                time_recorder['model_update_time'].append(model_update_end - model_update_start)
+
+                state_dict, n_data, loss = client_dict[client_id].train()
+                local_train_end = time.time()
+                local_train_time_round += local_train_end - local_train_start
+
+                # 模型传递计时
+                model_transfer_start = time.time()
+                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
+                model_transfer_end = time.time()
+                model_transfer_time_round += model_transfer_end - model_transfer_start
+            elif config["client"]["fed_algo"] == 'FedNova':
+                # 模型更新计时
+                model_update_start = time.time()
+                client_dict[client_id].update(global_state_dict)
+                model_update_end = time.time()
+                time_recorder['model_update_time'].append(model_update_end - model_update_start)
+
+                state_dict, n_data, loss, coeff, norm_grad = client_dict[client_id].train()
+                local_train_end = time.time()
+                local_train_time_round += local_train_end - local_train_start
+
+                # 模型传递计时
+                model_transfer_start = time.time()
+                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, coeff, norm_grad)
+                model_transfer_end = time.time()
+                model_transfer_time_round += model_transfer_end - model_transfer_start
+            elif config["client"]["fed_algo"] == 'FedShapley':
+                # 模型更新计时
+                model_update_start = time.time()
+                client_dict[client_id].update(global_state_dict)
+                model_update_end = time.time()
+                time_recorder['model_update_time'].append(model_update_end - model_update_start)
+
+                state_dict, n_data, loss = client_dict[client_id].train()
+                local_train_end = time.time()
+                local_train_time_round += local_train_end - local_train_start
+
+                # 模型传递计时
+                model_transfer_start = time.time()
+                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
+                model_transfer_end = time.time()
+                model_transfer_time_round += model_transfer_end - model_transfer_start
+
+        time_recorder['local_train_time'].append(local_train_time_round)
+        time_recorder['model_transfer_time'].append(model_transfer_time_round)
+
+        # 全局聚合计时
+        global_agg_start = time.time()
         fed_server.select_clients()
         if config["client"]["fed_algo"] == 'FedAvg':
             global_state_dict, avg_loss, _ = fed_server.agg()
@@ -148,6 +222,8 @@ def fed_run():
             global_state_dict, avg_loss, _ = fed_server.agg()
         elif config["client"]["fed_algo"] == 'FedShapley':
             global_state_dict, avg_loss, _ = fed_server.agg()
+        global_agg_end = time.time()
+        time_recorder['global_agg_time'].append(global_agg_end - global_agg_start)
 
         # 测试与刷新
         accuracy = fed_server.test()
@@ -170,11 +246,16 @@ def fed_run():
             os.makedirs(config["system"]["res_root"])
 
         with open(os.path.join(config["system"]["res_root"], '[\'%s\',' % config["client"]["fed_algo"] +
-                                        '\'%s\',' % config["system"]["model"] +
-                                        str(config["client"]["num_local_epoch"]) + ',' +
-                                        str(config["system"]["num_local_class"]) + ',' +
-                                        str(config["system"]["i_seed"])) + '].json', "w") as jsfile:
+                                                             '\'%s\',' % config["system"]["model"] +
+                                                             str(config["client"]["num_local_epoch"]) + ',' +
+                                                             str(config["system"]["num_local_class"]) + ',' +
+                                                             str(config["system"]["i_seed"])) + '].json',
+                  "w") as jsfile:
             json.dump(recorder.res, jsfile, cls=PythonObjectEncoder)
+
+    # 保存时间记录
+    with open(os.path.join(config["system"]["res_root"], 'time.json'), "w") as time_file:
+        json.dump(time_recorder, time_file)
 
 
 if __name__ == "__main__":
