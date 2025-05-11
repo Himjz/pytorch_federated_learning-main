@@ -19,6 +19,7 @@ from fed_baselines.server_fednova import FedNovaServer
 from postprocessing.recorder import Recorder
 from preprocessing.baselines_dataloader import divide_data
 from utils.models import *
+import time
 
 json_types = (list, dict, str, int, float, bool, type(None))
 
@@ -75,6 +76,19 @@ def fed_run():
 
     client_dict = {}
     recorder = Recorder()
+    # 初始化时间和指标记录列表
+    recorder.res['time_and_metrics'] = {
+        'client_train_avg': [],
+        'server_train': [],
+        'client_update_avg': [],
+        'global_agg': [],
+        'model_transfer_avg': [],
+        'accuracy': [],
+        'precision': [],
+        'recall': [],
+        'f1': [],
+        'loss': []
+    }
 
     trainset_config, testset = divide_data(num_client=config["system"]["num_client"], num_local_class=config["system"]["num_local_class"], dataset_name=config["system"]["dataset"],
                                            i_seed=config["system"]["i_seed"])
@@ -108,41 +122,98 @@ def fed_run():
 
     pbar = tqdm(range(config["system"]["num_round"]))
     for global_round in pbar:
+        client_train_times = []
+        client_update_times = []
+        model_transfer_times = []
+
         for client_id in trainset_config['users']:
-            # 本地训练
+            # 记录客户端更新模型时间
+            start_update = time.time()
             if config["client"]["fed_algo"] == 'FedAvg':
                 client_dict[client_id].update(global_state_dict)
+            elif config["client"]["fed_algo"] == 'SCAFFOLD':
+                client_dict[client_id].update(global_state_dict, scv_state)
+            elif config["client"]["fed_algo"] == 'FedProx':
+                client_dict[client_id].update(global_state_dict)
+            elif config["client"]["fed_algo"] == 'FedNova':
+                client_dict[client_id].update(global_state_dict)
+            end_update = time.time()
+            client_update_times.append(end_update - start_update)
+
+            # 记录模型传输下发时间
+            model_transfer_down_start = time.time()
+            # 模拟下发模型时间
+            model_transfer_down_end = time.time()
+
+            # 记录客户端训练时间
+            start_train = time.time()
+            if config["client"]["fed_algo"] == 'FedAvg':
                 state_dict, n_data, loss = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
             elif config["client"]["fed_algo"] == 'SCAFFOLD':
-                client_dict[client_id].update(global_state_dict, scv_state)
                 state_dict, n_data, loss, delta_ccv_state = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, delta_ccv_state)
             elif config["client"]["fed_algo"] == 'FedProx':
-                client_dict[client_id].update(global_state_dict)
                 state_dict, n_data, loss = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
             elif config["client"]["fed_algo"] == 'FedNova':
-                client_dict[client_id].update(global_state_dict)
                 state_dict, n_data, loss, coeff, norm_grad = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, coeff, norm_grad)
+            end_train = time.time()
+            client_train_times.append(end_train - start_train)
 
-        # 全局聚合
+            # 记录模型传输上传时间
+            model_transfer_up_start = time.time()
+            # 模拟上传模型时间
+            model_transfer_up_end = time.time()
+            model_transfer_times.append(
+                model_transfer_down_end - model_transfer_down_start +
+                model_transfer_up_end - model_transfer_up_start
+            )
+
+        # 计算各项平均时间
+        client_train_avg_time = sum(client_train_times) / len(client_train_times)
+        client_update_avg_time = sum(client_update_times) / len(client_update_times)
+        model_transfer_avg_time = sum(model_transfer_times) / len(model_transfer_times)
+
+        # 记录服务器训练时间
+        start_server_train = time.time()
         fed_server.select_clients()
+        end_server_train = time.time()
+        server_train_time = end_server_train - start_server_train
+
+        # 记录全局聚合时间
+        start_agg = time.time()
         if config["client"]["fed_algo"] == 'FedAvg':
             global_state_dict, avg_loss, _ = fed_server.agg()
         elif config["client"]["fed_algo"] == 'SCAFFOLD':
-            global_state_dict, avg_loss, _, scv_state = fed_server.agg()  # SCAFFOLD 算法
+            global_state_dict, avg_loss, _, scv_state = fed_server.agg()
         elif config["client"]["fed_algo"] == 'FedProx':
             global_state_dict, avg_loss, _ = fed_server.agg()
         elif config["client"]["fed_algo"] == 'FedNova':
             global_state_dict, avg_loss, _ = fed_server.agg()
+        end_agg = time.time()
+        global_agg_time = end_agg - start_agg
 
-        # 测试与刷新
+        # 测试并获取评估指标
         accuracy = fed_server.test()
+        accuracy_extra, recall, f1, avg_loss, precision = fed_server.test(default=False)
+
         fed_server.flush()
 
         # 记录结果
+        recorder.res['time_and_metrics']['client_train_avg'].append(client_train_avg_time)
+        recorder.res['time_and_metrics']['server_train'].append(server_train_time)
+        recorder.res['time_and_metrics']['client_update_avg'].append(client_update_avg_time)
+        recorder.res['time_and_metrics']['global_agg'].append(global_agg_time)
+        recorder.res['time_and_metrics']['model_transfer_avg'].append(model_transfer_avg_time)
+        recorder.res['time_and_metrics']['accuracy'].append(accuracy_extra)
+        recorder.res['time_and_metrics']['precision'].append(precision)
+        recorder.res['time_and_metrics']['recall'].append(recall)
+        recorder.res['time_and_metrics']['f1'].append(f1)
+        recorder.res['time_and_metrics']['loss'].append(avg_loss)
+
+        # 原有输出逻辑
         recorder.res['server']['iid_accuracy'].append(accuracy)
         recorder.res['server']['train_loss'].append(avg_loss)
 
@@ -152,17 +223,22 @@ def fed_run():
             'Global Round: %d' % global_round +
             '| Train loss: %.4f ' % avg_loss +
             '| Accuracy: %.4f' % accuracy +
-            '| Max Acc: %.4f' % max_acc)
+            '| Max Acc: %.4f' % max_acc
+        )
 
-        # 保存结果
+        # 保存结果到 JSON 文件
         if not os.path.exists(config["system"]["res_root"]):
             os.makedirs(config["system"]["res_root"])
 
-        with open(os.path.join(config["system"]["res_root"], '[\'%s\',' % config["client"]["fed_algo"] +
-                                        '\'%s\',' % config["system"]["model"] +
-                                        str(config["client"]["num_local_epoch"]) + ',' +
-                                        str(config["system"]["num_local_class"]) + ',' +
-                                        str(config["system"]["i_seed"])) + '].json', "w") as jsfile:
+        filename = os.path.join(
+            config["system"]["res_root"],
+            f'[\'{config["client"]["fed_algo"]}\','
+            f'\'{config["system"]["model"]}\','
+            f'{config["client"]["num_local_epoch"]},'
+            f'{config["system"]["num_local_class"]},'
+            f'{config["system"]["i_seed"]}].json'
+        )
+        with open(filename, "w") as jsfile:
             json.dump(recorder.res, jsfile, cls=PythonObjectEncoder)
 
 
