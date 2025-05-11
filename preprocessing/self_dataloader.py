@@ -1,4 +1,5 @@
 import os
+
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -29,7 +30,6 @@ def load_data(name, root='dt', download=True, save_pre_data=True):
         # 将标签转换为张量
         trainset.targets = torch.Tensor(trainset.targets)
         testset.targets = torch.Tensor(testset.targets)
-
 
     # 获取类别数量
     len_classes = len(trainset.classes)

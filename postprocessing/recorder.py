@@ -1,8 +1,9 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import json
-from json import JSONEncoder
 import pickle
+from json import JSONEncoder
+
+import matplotlib.pyplot as plt
+import numpy as np
 
 json_types = (list, dict, str, int, float, bool, type(None))
 
@@ -54,5 +55,3 @@ class Recorder(object):
             ax.legend(prop={'size': 12})
             ax.tick_params(axis='both', labelsize=12)
             ax.grid()
-
-

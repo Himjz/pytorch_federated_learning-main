@@ -1,6 +1,7 @@
-from utils.fed_utils import init_model
-from fed_baselines.server_base import FedServer
 import copy
+
+from fed_baselines.server_base import FedServer
+from utils.fed_utils import init_model
 
 
 class ScaffoldServer(FedServer):
@@ -70,7 +71,6 @@ class ScaffoldServer(FedServer):
         self.client_loss[name] = {}
         self.client_loss[name] = loss
         self.client_ccv_state[name].update(ccv_state)
-
 
     def flush(self):
         """

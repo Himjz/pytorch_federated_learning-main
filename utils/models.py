@@ -49,10 +49,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class LeNet(nn.Module):
-    supported_dims = {28}    # 导入农业数据集时将该参数改为300
 
-    def __init__(self, num_classes=10, in_channels=1, input_size=(28, 28)):   # 导入农业数据集时将input_size改为(300, 300)
+class LeNet(nn.Module):
+    supported_dims = {28}  # 导入农业数据集时将该参数改为300
+
+    def __init__(self, num_classes=10, in_channels=1, input_size=(28, 28)):  # 导入农业数据集时将input_size改为(300, 300)
         super(LeNet, self).__init__()
         # 验证输入尺寸是否受支持
         if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
@@ -148,7 +149,7 @@ class CNN(nn.Module):
         self.fp_con1 = nn.Sequential(OrderedDict([
             ('con0', nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=3, padding=1)),
             ('relu0', nn.ReLU(inplace=True)),
-            ]))
+        ]))
 
         self.ternary_con2 = nn.Sequential(OrderedDict([
             # 卷积层模块 1
@@ -177,7 +178,7 @@ class CNN(nn.Module):
             ('pool4', nn.MaxPool2d(kernel_size=2, stride=2)),
         ]))
 
-        self.fp_fc = nn.Linear(4096, num_classes, bias = False)
+        self.fp_fc = nn.Linear(4096, num_classes, bias=False)
 
     def forward(self, x):
         x = self.fp_con1(x)
@@ -195,4 +196,3 @@ if __name__ == "__main__":
         model_parameters = filter(lambda p: p.requires_grad, model.parameters())
         param_len = sum([np.prod(p.size()) for p in model_parameters])
         print('Number of model parameters of %s :' % model_name, ' %d ' % param_len)
-

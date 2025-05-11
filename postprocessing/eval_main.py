@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-import matplotlib.pyplot as plt
 import argparse
 import os
+
+import matplotlib.pyplot as plt
+
 from recorder import Recorder
 
 
