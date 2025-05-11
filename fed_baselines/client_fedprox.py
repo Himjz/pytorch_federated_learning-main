@@ -1,9 +1,10 @@
 ## 客户端数据的分布差异较大时，FedProx 通过近端项对本地模型更新进行约束，可以避免客户端模型偏离全局模型太远，从而提高模型在全局数据上的收敛速度和泛化能力。
-from fed_baselines.client_base import FedClient
 import copy
-from utils.models import *
 
 from torch.utils.data import DataLoader
+
+from fed_baselines.client_base import FedClient
+from utils.models import *
 
 
 class FedProxClient(FedClient):
@@ -50,7 +51,7 @@ class FedProxClient(FedClient):
                     loss = loss_func(output, b_y.long())
                     optimizer.zero_grad()
 
-                    #fedprox
+                    # fedprox
                     prox_term = 0.0
                     for p_i, param in enumerate(self.model.parameters()):
                         prox_term += (self.mu / 2) * torch.norm((param - global_weights[p_i])) ** 2
@@ -59,7 +60,5 @@ class FedProxClient(FedClient):
 
                     loss.backward()
                     optimizer.step()
-
-
 
         return self.model.state_dict(), self.n_data, loss.data.cpu().numpy()

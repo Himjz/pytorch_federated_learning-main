@@ -1,7 +1,9 @@
 ## 客户端基类，实现客户端模型初始化和模型加载、更新、训练
-from utils.models import *
 from torch.utils.data import DataLoader
+
 from utils.fed_utils import assign_dataset, init_model
+from utils.models import *
+
 
 class FedClient(object):
     def __init__(self, name, epoch, dataset_id, model_name):
@@ -33,7 +35,8 @@ class FedClient(object):
         # 初始化本地模型
         self._num_class, self._image_dim, self._image_channel = assign_dataset(dataset_id)
         self.model_name = model_name
-        self.model = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
+        self.model = init_model(model_name=self.model_name, num_class=self._num_class,
+                                image_channel=self._image_channel)
         model_parameters = filter(lambda p: p.requires_grad, self.model.parameters())
         self.param_len = sum([np.prod(p.size()) for p in model_parameters])
 
@@ -54,7 +57,8 @@ class FedClient(object):
         客户端从服务器更新模型。
         :param model_state_dict: 全局模型。
         """
-        self.model = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
+        self.model = init_model(model_name=self.model_name, num_class=self._num_class,
+                                image_channel=self._image_channel)
         self.model.load_state_dict(model_state_dict)
 
     def train(self):

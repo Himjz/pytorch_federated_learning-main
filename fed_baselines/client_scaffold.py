@@ -1,9 +1,10 @@
-from fed_baselines.client_base import FedClient
 import copy
-from utils.models import *
 
 from torch.utils.data import DataLoader
+
+from fed_baselines.client_base import FedClient
 from utils.fed_utils import init_model
+from utils.models import *
 
 
 class ScaffoldClient(FedClient):
@@ -20,7 +21,8 @@ class ScaffoldClient(FedClient):
         :param model_state_dict: 全局模型状态字典
         :param scv_state: 服务器控制变量状态字典
         """
-        self.model = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
+        self.model = init_model(model_name=self.model_name, num_class=self._num_class,
+                                image_channel=self._image_channel)
         self.model.load_state_dict(model_state_dict)
         self.scv = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
         self.scv.load_state_dict(scv_state)
@@ -84,14 +86,14 @@ class ScaffoldClient(FedClient):
                     self.model.load_state_dict(state_dict)
 
                     cnt += 1
-        # 加载更新后的客户端控制变量状态
-            # 计算模型状态变化量
-            # 计算客户端控制变量状态变化量
-            # 根据 SCAFFOLD 算法更新客户端控制变量
-        # 获取当前模型状态字典
-        # 深拷贝客户端控制变量状态变化量
-        # 深拷贝更新后的客户端控制变量状态字典
-        # 深拷贝更新后的模型状态字典
+                    # 加载更新后的客户端控制变量状态
+                    # 计算模型状态变化量
+                    # 计算客户端控制变量状态变化量
+                    # 根据 SCAFFOLD 算法更新客户端控制变量
+                    # 获取当前模型状态字典
+                    # 深拷贝客户端控制变量状态变化量
+                    # 深拷贝更新后的客户端控制变量状态字典
+                    # 深拷贝更新后的模型状态字典
                     epoch_loss_collector.append(loss.item())
 
         delta_model_state = copy.deepcopy(self.model.state_dict())
@@ -100,7 +102,8 @@ class ScaffoldClient(FedClient):
         delta_ccv_state = copy.deepcopy(new_ccv_state)
         state_dict = self.model.state_dict()
         for key in state_dict:
-            new_ccv_state[key] = ccv_state[key] - scv_state[key] + (global_state_dict[key] - state_dict[key]) / (cnt * self._lr)
+            new_ccv_state[key] = ccv_state[key] - scv_state[key] + (global_state_dict[key] - state_dict[key]) / (
+                        cnt * self._lr)
             delta_ccv_state[key] = new_ccv_state[key] - ccv_state[key]
             delta_model_state[key] = state_dict[key] - global_state_dict[key]
 
