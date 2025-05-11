@@ -68,7 +68,7 @@ class FedServer(object):
     def test(self, default: bool = True):
         """
         服务器在测试数据集上测试模型。
-        :param default: 若为 True，保持原输出；若为 False，依次返回准确率、召回率、F1 分数、损失、精确率
+        :param default: 若为 True，返回准确率；若为 False，依次返回准确率、召回率、F1 分数、损失、精确率
         """
         test_loader = DataLoader(self.testset, batch_size=self._batch_size, shuffle=True)
         self.model.to(self._device)
@@ -99,11 +99,11 @@ class FedServer(object):
         avg_loss = loss_collector / len(test_loader)
 
         if default:
-            return accuracy.cpu().numpy()
+            return accuracy
         else:
             recall = recall_score(all_labels, all_preds, average='weighted')
             f1 = f1_score(all_labels, all_preds, average='weighted')
-            precision = precision_score(all_labels, all_preds, average='weighted')
+            precision = precision_score(all_labels, all_preds, average='weighted', zero_division=0)  # 避免警告
             return accuracy, recall, f1, avg_loss, precision
 
     def select_clients(self, connection_ratio=1):
