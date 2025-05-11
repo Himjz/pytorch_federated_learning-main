@@ -162,13 +162,15 @@ def fed_run():
         'local_train_time': [],
         'model_transfer_time': [],
         'global_agg_time': [],
-        'model_update_time': []
+        'model_update_time': []  # 存储每轮模型更新的平均时间
     }
 
     pbar = tqdm(range(config["system"]["num_round"]))
     for global_round in pbar:
         local_train_time_round = 0
         model_transfer_time_round = 0
+        total_model_update_time = 0  # 记录本轮所有客户端模型更新时间总和
+
         for client_id in trainset_config['users']:
             # 本地训练计时
             local_train_start = time.time()
@@ -177,7 +179,8 @@ def fed_run():
                 model_update_start = time.time()
                 client_dict[client_id].update(global_state_dict)
                 model_update_end = time.time()
-                time_recorder['model_update_time'].append(model_update_end - model_update_start)
+                client_model_update_time = model_update_end - model_update_start
+                total_model_update_time += client_model_update_time
 
                 state_dict, n_data, loss = client_dict[client_id].train()
                 local_train_end = time.time()
@@ -193,7 +196,8 @@ def fed_run():
                 model_update_start = time.time()
                 client_dict[client_id].update(global_state_dict, scv_state)
                 model_update_end = time.time()
-                time_recorder['model_update_time'].append(model_update_end - model_update_start)
+                client_model_update_time = model_update_end - model_update_start
+                total_model_update_time += client_model_update_time
 
                 state_dict, n_data, loss, delta_ccv_state = client_dict[client_id].train()
                 local_train_end = time.time()
@@ -209,7 +213,8 @@ def fed_run():
                 model_update_start = time.time()
                 client_dict[client_id].update(global_state_dict)
                 model_update_end = time.time()
-                time_recorder['model_update_time'].append(model_update_end - model_update_start)
+                client_model_update_time = model_update_end - model_update_start
+                total_model_update_time += client_model_update_time
 
                 state_dict, n_data, loss = client_dict[client_id].train()
                 local_train_end = time.time()
@@ -225,7 +230,8 @@ def fed_run():
                 model_update_start = time.time()
                 client_dict[client_id].update(global_state_dict)
                 model_update_end = time.time()
-                time_recorder['model_update_time'].append(model_update_end - model_update_start)
+                client_model_update_time = model_update_end - model_update_start
+                total_model_update_time += client_model_update_time
 
                 state_dict, n_data, loss, coeff, norm_grad = client_dict[client_id].train()
                 local_train_end = time.time()
@@ -241,7 +247,8 @@ def fed_run():
                 model_update_start = time.time()
                 client_dict[client_id].update(global_state_dict)
                 model_update_end = time.time()
-                time_recorder['model_update_time'].append(model_update_end - model_update_start)
+                client_model_update_time = model_update_end - model_update_start
+                total_model_update_time += client_model_update_time
 
                 state_dict, n_data, loss = client_dict[client_id].train()
                 local_train_end = time.time()
@@ -255,6 +262,10 @@ def fed_run():
 
         time_recorder['local_train_time'].append(local_train_time_round)
         time_recorder['model_transfer_time'].append(model_transfer_time_round)
+
+        num_clients = len(trainset_config['users'])
+        avg_model_update_time = (total_model_update_time / num_clients) if num_clients > 0 else 0
+        time_recorder['model_update_time'].append(avg_model_update_time)
 
         # 全局聚合计时
         global_agg_start = time.time()
