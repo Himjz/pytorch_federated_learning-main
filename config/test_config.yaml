@@ -1,14 +1,14 @@
 system:
-  num_client: 100
+  num_client: 5
   num_local_class: 2
-  dataset: "MNIST"
+  dataset: "SelfDataSet"
   model: "LeNet"
   i_seed: 235235
-  num_round: 2000
+  num_round: 100
   res_root: "results"
 
 client:
-  fed_algo: "FedDp"
+  fed_algo: "FedShapley"
   lr: 0.01
   batch_size: 64
   num_local_epoch: 3
