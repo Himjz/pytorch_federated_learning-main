@@ -1,8 +1,11 @@
-from utils.models import *
-import torch
-from torch.utils.data import DataLoader
-from utils.fed_utils import assign_dataset, init_model
 import numpy as np
+import torch
+import torch.nn.functional as F
+from sklearn.metrics import recall_score, f1_score, precision_score
+from torch.utils.data import DataLoader
+
+from utils.fed_utils import assign_dataset, init_model
+
 
 class FedServer(object):
     def __init__(self, client_list, dataset_id, model_name):
@@ -62,13 +65,18 @@ class FedServer(object):
         """
         return self.model.state_dict()
 
-    def test(self):
+    def test(self, default: bool = True):
         """
         服务器在测试数据集上测试模型。
+        :param default: 若为 True，返回准确率；若为 False，依次返回准确率、召回率、F1 分数、损失、精确率
         """
         test_loader = DataLoader(self.testset, batch_size=self._batch_size, shuffle=True)
         self.model.to(self._device)
         accuracy_collector = 0
+        loss_collector = 0
+        all_preds = []
+        all_labels = []
+
         for step, (x, y) in enumerate(test_loader):
             with torch.no_grad():
                 b_x = x.to(self._device)  # 将数据移到 GPU 上
@@ -76,11 +84,27 @@ class FedServer(object):
 
                 test_output = self.model(b_x)
                 pred_y = torch.max(test_output, 1)[1].to(self._device).data.squeeze()
-                # 累加预测正确的样本数量
-                accuracy_collector = accuracy_collector + (pred_y == b_y).sum()
-        accuracy = accuracy_collector / len(self.testset)
 
-        return accuracy.cpu().numpy()
+                # 累加预测正确的样本数量
+                accuracy_collector += (pred_y == b_y).sum().item()
+
+                # 计算损失
+                loss = F.cross_entropy(test_output, b_y)
+                loss_collector += loss.item()
+
+                all_preds.extend(pred_y.cpu().numpy())
+                all_labels.extend(b_y.cpu().numpy())
+
+        accuracy = accuracy_collector / len(self.testset)
+        avg_loss = loss_collector / len(test_loader)
+
+        if default:
+            return accuracy
+        else:
+            recall = recall_score(all_labels, all_preds, average='weighted')
+            f1 = f1_score(all_labels, all_preds, average='weighted')
+            precision = precision_score(all_labels, all_preds, average='weighted', zero_division=0)  # 避免警告
+            return accuracy, recall, f1, avg_loss, precision
 
     def select_clients(self, connection_ratio=1):
         """
