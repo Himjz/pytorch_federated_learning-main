@@ -53,7 +53,7 @@ colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
           '#bcbd22', '#17becf', '#aec7e8', '#ffbb78']
 
 # 定义要读取的JSON文件目录和文件模式
-json_dir = ".."  # 当前目录
+json_dir = "results"  # 当前目录
 file_pattern = "*.json"  # 匹配所有JSON文件
 
 # 获取所有匹配的JSON文件
