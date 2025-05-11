@@ -15,7 +15,7 @@ from fed_baselines.client_fednova import FedNovaClient
 from fed_baselines.server_base import FedServer
 from fed_baselines.server_scaffold import ScaffoldServer
 from fed_baselines.server_fednova import FedNovaServer
-from fed_baselines.server_shapley import FedShapley
+from fed_baselines.server_shapley_MonteCarlo import FedShapley
 
 from postprocessing.recorder import Recorder
 from preprocessing.self_dataloader import divide_data
