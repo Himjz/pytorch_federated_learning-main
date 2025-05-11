@@ -1,12 +1,13 @@
 import json
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-import numpy as np
 import os
 from pathlib import Path
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+
 # 设置中文字体
-mpl.rcParams["font.family"] = ["SimHei",]
+mpl.rcParams["font.family"] = ["SimHei"]
 mpl.rcParams["axes.unicode_minus"] = False  # 解决负号显示问题
 
 # 定义指标名称的中文映射
@@ -25,6 +26,7 @@ chinese_mapping = {
     "global_agg_time": "全局聚合时间",
     "model_update_time": "模型更新时间",
     "train_loss": "训练损失",
+    "test_loss": "测试损失",
     "loss": "损失"
 }
 
@@ -37,7 +39,12 @@ time_metrics = [
 
 # 定义损失指标列表
 loss_metrics = [
-    "train_loss", "test_loss"
+    "train_loss", "test_loss", "loss"
+]
+
+# 定义服务器和客户端训练时间指标
+server_client_train_metrics = [
+    "server_train", "client_train_avg"
 ]
 
 # 定义多种颜色（每种颜色对应一个文件）
@@ -50,7 +57,7 @@ json_dir = ".."  # 当前目录
 file_pattern = "*.json"  # 匹配所有JSON文件
 
 # 获取所有匹配的JSON文件
-json_files = ["Shapley-LeNet.json"]
+json_files = ["Shapley-LeNet.json", "FedAvg-LeNet.json"]
 
 
 # 从文件名中提取算法名称（用于图例）
@@ -96,7 +103,8 @@ for metric in all_metrics:
     # 记录是否有数据可绘制
     has_data = False
 
-    # 遍历所有算法的数据
+    # 遍历所有算法的数据并收集统计信息
+    stats_text = []
     for i, (algorithm, data) in enumerate(all_data.items()):
         if metric in data:
             values = data[metric]
@@ -105,6 +113,24 @@ for metric in all_metrics:
             # 绘制折线图，添加算法名称到图例
             plt.plot(values, color=color, linewidth=2.5, marker='o', markersize=4,
                      markevery=max(1, len(values) // 10), label=algorithm)
+
+            # 生成特定类型的统计信息
+            if metric in time_metrics:
+                # 时间类指标：添加平均值
+                avg = np.mean(values)
+                stats_text.append(f"{algorithm}: 平均 {avg:.3f} 秒")
+            elif metric in loss_metrics:
+                # 损失类指标：添加最小值
+                min_val = min(values)
+                stats_text.append(f"{algorithm}: 最小损失 {min_val:.6f}")
+            elif metric in server_client_train_metrics:
+                # 服务器和客户端训练时间：添加总计时
+                total = sum(values)
+                stats_text.append(f"{algorithm}: 总时间 {total:.3f} 秒")
+            else:
+                # 其他指标：添加最大值
+                max_val = max(values)
+                stats_text.append(f"{algorithm}: 最大 {max_val:.6f}")
 
             has_data = True
 
@@ -132,24 +158,16 @@ for metric in all_metrics:
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
 
-    # 添加图例（显示不同文件的来源）
+    # 添加图例
     plt.legend(fontsize=14, loc='best')
 
-    # 添加统计信息（只显示第一个文件的，避免重复）
-    if metric in time_metrics and metric in all_data[list(all_data.keys())[0]]:
-        values = all_data[list(all_data.keys())[0]][metric]
-        stats = f'最大值: {max(values):.3f}\n最小值: {min(values):.3f}\n平均值: {np.mean(values):.3f}'
-    elif metric in loss_metrics and metric in all_data[list(all_data.keys())[0]]:
-        values = all_data[list(all_data.keys())[0]][metric]
-        stats = f'最大值: {max(values):.3f}\n最小值: {min(values):.3f}'
-    else:
-        stats = ""
-
-    if stats:
-        plt.text(0.95, 0.05, stats,
+    # 添加特定类型的统计信息
+    if stats_text:
+        stats_text = "\n".join(stats_text)
+        plt.text(0.95, 0.95, stats_text,
                  transform=plt.gca().transAxes,
                  fontsize=12,
-                 verticalalignment='bottom',
+                 verticalalignment='top',
                  horizontalalignment='right',
                  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
