@@ -21,7 +21,7 @@ from fed_baselines.server_fednova import FedNovaServer
 from fed_baselines.server_scaffold import ScaffoldServer
 from fed_baselines.server_shapley_MonteCarlo import FedShapley
 from postprocessing.recorder import Recorder
-from preprocessing.baselines_dataloader import divide_data
+from preprocessing.self_dataloader import divide_data
 
 json_types = (list, dict, str, int, float, bool, type(None))
 
@@ -46,7 +46,8 @@ def fed_args():
     """
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--config', type=str, required=True, help='用于配置的 YAML 文件')
+    # 添加配置文件路径参数，该参数为必需参数
+    parser.add_argument('--config', type=str, required=True, help='用于配置的 YAML 文件路径')
 
     args = parser.parse_args()
     return args
@@ -64,13 +65,18 @@ def fed_run():
             print(exc)
 
     algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova", "FedShapley"]
-    assert config["client"]["fed_algo"] in algo_list, "The federated learning algorithm is not supported"
+    # 检查配置中的算法是否支持
+    assert config["client"]["fed_algo"] in algo_list, "不支持该联邦学习算法"
 
-    dataset_list = ['MNIST', 'CIFAR10', 'FashionMNIST', 'SVHN', 'CIFAR100']
-    assert config["system"]["dataset"] in dataset_list, "The dataset is not supported"
+    # 支持的数据集列表
+    dataset_list = ['MNIST', 'CIFAR10', 'FashionMNIST', 'SVHN', 'CIFAR100', 'SelfDataSet']
+    # 检查配置中的数据集是否支持
+    assert config["system"]["dataset"] in dataset_list, "不支持该数据集"
 
+    # 支持的模型列表
     model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN"]
-    assert config["system"]["model"] in model_list, "The model is not supported"
+    # 检查配置中的模型是否支持
+    assert config["system"]["model"] in model_list, "不支持该模型"
 
     np.random.seed(config["system"]["i_seed"])
     torch.manual_seed(config["system"]["i_seed"])
@@ -181,6 +187,10 @@ def fed_run():
             elif config["client"]["fed_algo"] == 'FedNova':
                 state_dict, n_data, loss, coeff, norm_grad = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, coeff, norm_grad)
+            elif config["client"]["fed_algo"] == 'FedShapley':
+                client_dict[client_id].update(global_state_dict)
+                state_dict, n_data, loss = client_dict[client_id].train()
+                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
             end_train = time.time()
             client_train_times.append(end_train - start_train)
 
