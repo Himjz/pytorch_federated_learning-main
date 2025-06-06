@@ -1,5 +1,6 @@
-from fed_baselines.server_base import FedServer
 import copy
+
+from fed_baselines.server_base import FedServer
 
 
 class FedNovaServer(FedServer):
@@ -34,7 +35,8 @@ class FedNovaServer(FedServer):
                     nova_model_state[key] = self.client_norm_grad[name][key] * self.client_n_data[name] / self.n_data
                 else:
                     # 累加归一化梯度
-                    nova_model_state[key] = nova_model_state[key] + self.client_norm_grad[name][key] * self.client_n_data[name] / self.n_data
+                    nova_model_state[key] = nova_model_state[key] + self.client_norm_grad[name][key] * \
+                                            self.client_n_data[name] / self.n_data
             # 累加平均损失
             avg_loss = avg_loss + self.client_loss[name] * self.client_n_data[name] / self.n_data
 
@@ -70,7 +72,6 @@ class FedNovaServer(FedServer):
         self.client_loss[name] = loss
         self.client_coeff[name] = coeff
         self.client_norm_grad[name].update(norm_grad)
-
 
     def flush(self):
         """

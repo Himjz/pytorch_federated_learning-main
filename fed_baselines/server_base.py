@@ -49,7 +49,8 @@ class FedServer(object):
         # 初始化全局机器学习模型
         self._num_class, self._image_dim, self._image_channel = assign_dataset(dataset_id)
         self.model_name = model_name
-        self.model = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
+        self.model = init_model(model_name=self.model_name, num_class=self._num_class,
+                                image_channel=self._image_channel)
 
     def load_testset(self, testset):
         """
@@ -156,7 +157,8 @@ class FedServer(object):
                 if i == 0:
                     model_state[key] = self.client_state[name][key] * self.client_n_data[name] / self.n_data
                 else:
-                    model_state[key] = model_state[key] + self.client_state[name][key] * self.client_n_data[name] / self.n_data
+                    model_state[key] = model_state[key] + self.client_state[name][key] * self.client_n_data[
+                        name] / self.n_data
 
             avg_loss = avg_loss + self.client_loss[name] * self.client_n_data[name] / self.n_data
 
