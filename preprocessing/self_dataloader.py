@@ -8,16 +8,16 @@ import numpy as np
 
 def load_data(name, root='dt', download=True, save_pre_data=True):
     """
-    加载指定名称的数据集，当前仅支持 SelfDataSet。
+    加载图像数据集并进行预处理
 
     参数:
-    name (str): 数据集名称，目前仅支持 'SelfDataSet'。
-    root (str, 可选): 数据集存储的根目录，默认为 'dt'。
-    download (bool, 可选): 是否下载数据集，默认为 True。
-    save_pre_data (bool, 可选): 是否保存预处理后的数据，默认为 True。
+        name (str): 数据集名称，目前仅支持'SelfDataSet'
+        root (str): 数据存储根目录
+        download (bool): 是否下载数据
+        save_pre_data (bool): 是否保存预处理数据
 
     返回:
-    tuple: 包含训练集、测试集和类别数量的元组。
+        tuple: (训练集, 测试集, 类别数量)
     """
     # 这里仅支持 SelfDataSet
     data_dict = ['SelfDataSet']
@@ -52,18 +52,21 @@ def load_data(name, root='dt', download=True, save_pre_data=True):
 def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_seed=0,
                 print_report=False, client_label_ratios=None):
     """
-    根据指定的客户端数量和标签分布，将训练集数据划分给不同的客户端。
+    将数据集按照指定的客户端数量和标签分布进行划分
 
     参数:
-    num_client (int, 可选): 客户端数量，默认为 1。
-    num_local_class (int, 可选): 每个客户端的本地类别数量，默认为 10。若为 -1，则等于全局类别数量。
-    dataset_name (str, 可选): 数据集名称，默认为 'SelfDataSet'。
-    i_seed (int, 可选): 随机种子，用于确保结果可复现，默认为 0。
-    print_report (bool, 可选): 是否打印客户端标签分布报告，默认为 False。
-    client_label_ratios (list, tuple, np.ndarray, 可选): 每个客户端的标签比重，默认为 None。
+        num_client (int): 客户端数量
+        num_local_class (int): 每个客户端的本地类别数量，-1表示所有类别
+        dataset_name (str): 数据集名称
+        i_seed (int): 随机种子
+        print_report (bool): 是否打印客户端标签分布报告
+        client_label_ratios (list/tuple): 每个客户端的随机标签比重参数，范围[0,1]
+            - 0: 完全保留原始数据集的标签分布
+            - 1: 完全随机的标签分布
+            - 0~1之间: 原始分布和随机分布的加权混合
 
     返回:
-    tuple: 包含训练集配置字典和测试集的元组。
+        tuple: (训练集配置字典, 测试集)
     """
     torch.manual_seed(i_seed)
     np.random.seed(i_seed)  # 设置numpy随机种子，确保结果可复现
@@ -74,6 +77,12 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_
     if num_local_class == -1:
         num_local_class = num_classes
     assert 0 < num_local_class <= num_classes, "number of local class should smaller than global number of class"
+
+    # 计算全局标签分布
+    global_distribution = np.zeros(num_classes)
+    for label in trainset.targets:
+        global_distribution[int(label)] += 1
+    global_distribution /= global_distribution.sum()
 
     # 处理客户端标签比重参数
     if client_label_ratios is not None:
@@ -92,18 +101,17 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_
 
                 # 生成该客户端的标签分布
                 if ratio == 0:
-                    # 完全均匀分布
-                    distribution = np.ones(num_classes) / num_classes
+                    # 完全保留原始分布
+                    distribution = global_distribution.copy()
                 elif ratio == 1:
                     # 完全随机分布
                     distribution = np.random.rand(num_classes)
                     distribution /= distribution.sum()
                 else:
-                    # 混合分布
-                    uniform = np.ones(num_classes) / num_classes
+                    # 混合分布：原始分布和随机分布的加权组合
                     random = np.random.rand(num_classes)
                     random /= random.sum()
-                    distribution = (1 - ratio) * uniform + ratio * random
+                    distribution = (1 - ratio) * global_distribution + ratio * random
 
                 client_distributions.append(distribution)
             else:
@@ -186,15 +194,11 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_
                 print(f"    标签 {label}: {count} 样本 ({count / len(user_data):.2%})")
 
         print("\n===== 总体分布 =====")
-        global_distribution = {}
-        for idx in range(len(trainset)):
-            label = int(trainset.targets[idx].item())
-            global_distribution[label] = global_distribution.get(label, 0) + 1
         print(f"  总样本数: {len(trainset)}")
         print("  标签分布:")
-        for label in sorted(global_distribution.keys()):
-            count = global_distribution[label]
-            print(f"    标签 {label}: {count} 样本 ({count / len(trainset):.2%})")
+        for label in range(num_classes):
+            count = int(global_distribution[label] * len(trainset))
+            print(f"    标签 {label}: {count} 样本 ({global_distribution[label]:.2%})")
         print("====================\n")
 
     return trainset_config, testset
