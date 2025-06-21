@@ -7,6 +7,18 @@ import numpy as np
 
 
 def load_data(name, root='dt', download=True, save_pre_data=True):
+    """
+    加载指定名称的数据集，当前仅支持 SelfDataSet。
+
+    参数:
+    name (str): 数据集名称，目前仅支持 'SelfDataSet'。
+    root (str, 可选): 数据集存储的根目录，默认为 'dt'。
+    download (bool, 可选): 是否下载数据集，默认为 True。
+    save_pre_data (bool, 可选): 是否保存预处理后的数据，默认为 True。
+
+    返回:
+    tuple: 包含训练集、测试集和类别数量的元组。
+    """
     # 这里仅支持 SelfDataSet
     data_dict = ['SelfDataSet']
     assert name in data_dict, "The dataset is not present"
@@ -39,6 +51,20 @@ def load_data(name, root='dt', download=True, save_pre_data=True):
 
 def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_seed=0,
                 print_report=False, client_label_ratios=None):
+    """
+    根据指定的客户端数量和标签分布，将训练集数据划分给不同的客户端。
+
+    参数:
+    num_client (int, 可选): 客户端数量，默认为 1。
+    num_local_class (int, 可选): 每个客户端的本地类别数量，默认为 10。若为 -1，则等于全局类别数量。
+    dataset_name (str, 可选): 数据集名称，默认为 'SelfDataSet'。
+    i_seed (int, 可选): 随机种子，用于确保结果可复现，默认为 0。
+    print_report (bool, 可选): 是否打印客户端标签分布报告，默认为 False。
+    client_label_ratios (list, tuple, np.ndarray, 可选): 每个客户端的标签比重，默认为 None。
+
+    返回:
+    tuple: 包含训练集配置字典和测试集的元组。
+    """
     torch.manual_seed(i_seed)
     np.random.seed(i_seed)  # 设置numpy随机种子，确保结果可复现
 
