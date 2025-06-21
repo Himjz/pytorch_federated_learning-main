@@ -8,7 +8,7 @@ import numpy as np
 
 def load_data(name, root='dt', download=True, save_pre_data=True):
     """
-    加载图像数据集并进行预处理
+    加载图像数据集
 
     参数:
         name (str): 数据集名称，目前仅支持'SelfDataSet'
@@ -17,7 +17,9 @@ def load_data(name, root='dt', download=True, save_pre_data=True):
         save_pre_data (bool): 是否保存预处理数据
 
     返回:
-        tuple: (训练集, 测试集, 类别数量)
+        trainset (Dataset): 训练集
+        testset (Dataset): 测试集
+        len_classes (int): 类别数量
     """
     # 这里仅支持 SelfDataSet
     data_dict = ['SelfDataSet']
@@ -49,27 +51,48 @@ def load_data(name, root='dt', download=True, save_pre_data=True):
     return trainset, testset, len_classes
 
 
-def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_seed=0,
-                print_report=False, client_label_ratios=None):
+def print_label_distribution(client_data, num_classes):
     """
-    将数据集按照指定的客户端数量和标签分布进行划分
+    打印客户端标签分布报告
+
+    参数:
+        client_data (dict): 客户端数据字典，格式为{客户端ID: 数据集}
+        num_classes (int): 总类别数量
+    """
+    print("\n===== 客户端标签分布报告 =====")
+    for user, data in client_data.items():
+        # 获取该客户端所有样本的标签
+        labels = torch.tensor([data.dataset.targets[idx].item() for idx in data.indices])
+        # 统计每个类别的样本数量
+        label_counts = torch.bincount(labels.long(), minlength=num_classes)
+
+        # 打印标签分布
+        print(f"客户端 {user}:")
+        for cls in range(num_classes):
+            if label_counts[cls] > 0:
+                print(f"  类别 {cls}: {label_counts[cls]} 个样本")
+        print()
+
+
+def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_seed=0,
+                print_report=False, label_adjustment=None):
+    """
+    划分数据集并分配给客户端，支持非IID数据分布和标签调整
 
     参数:
         num_client (int): 客户端数量
-        num_local_class (int): 每个客户端的本地类别数量，-1表示所有类别
+        num_local_class (int): 每个客户端的本地类别数量，-1表示使用全部类别
         dataset_name (str): 数据集名称
         i_seed (int): 随机种子
         print_report (bool): 是否打印客户端标签分布报告
-        client_label_ratios (list/tuple): 每个客户端的随机标签比重参数，范围[0,1]
-            - 0: 完全保留原始数据集的标签分布
-            - 1: 完全随机的标签分布
-            - 0~1之间: 原始分布和随机分布的加权混合
+        label_adjustment (list/tuple): 标签调整策略，数组或元组，每个元素对应一个客户端的调整比例
 
     返回:
-        tuple: (训练集配置字典, 测试集)
+        trainset_config (dict): 训练集配置，包含客户端数据划分
+        testset (Dataset): 测试集
     """
     torch.manual_seed(i_seed)
-    np.random.seed(i_seed)  # 设置numpy随机种子，确保结果可复现
+    np.random.seed(i_seed)  # 确保numpy随机数生成器也使用相同的种子
 
     trainset, testset, len_classes = load_data(dataset_name, download=True, save_pre_data=False)
 
@@ -78,128 +101,99 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_
         num_local_class = num_classes
     assert 0 < num_local_class <= num_classes, "number of local class should smaller than global number of class"
 
-    # 计算全局标签分布
-    global_distribution = np.zeros(num_classes)
-    for label in trainset.targets:
-        global_distribution[int(label)] += 1
-    global_distribution /= global_distribution.sum()
-
-    # 处理客户端标签比重参数
-    if client_label_ratios is not None:
-        # 确保输入是可迭代对象
-        if not isinstance(client_label_ratios, (list, tuple, np.ndarray)):
-            raise ValueError("client_label_ratios must be a list, tuple, or numpy array")
-
-        # 为每个客户端创建标签分布
-        client_distributions = []
-        for i in range(num_client):
-            if i < len(client_label_ratios):
-                ratio = client_label_ratios[i]
-                # 检查比重是否有效
-                if not (0 <= ratio <= 1):
-                    raise ValueError(f"Label ratio for client {i} must be between 0 and 1")
-
-                # 生成该客户端的标签分布
-                if ratio == 0:
-                    # 完全保留原始分布
-                    distribution = global_distribution.copy()
-                elif ratio == 1:
-                    # 完全随机分布
-                    distribution = np.random.rand(num_classes)
-                    distribution /= distribution.sum()
-                else:
-                    # 混合分布：原始分布和随机分布的加权组合
-                    random = np.random.rand(num_classes)
-                    random /= random.sum()
-                    distribution = (1 - ratio) * global_distribution + ratio * random
-
-                client_distributions.append(distribution)
-            else:
-                # 默认为均匀分布
-                client_distributions.append(np.ones(num_classes) / num_classes)
-    else:
-        # 默认所有客户端使用均匀分布
-        client_distributions = [np.ones(num_classes) / num_classes for _ in range(num_client)]
+    # 检查标签调整参数
+    if label_adjustment is not None:
+        assert len(label_adjustment) == num_client, "label_adjustment must have length equal to num_client"
+        for ratio in label_adjustment:
+            assert 0 <= ratio <= 1, "each element in label_adjustment must be between 0 and 1"
 
     trainset_config = {'users': [],
                        'user_data': {},
                        'num_samples': 0}
+    config_division = {}  # Count of the classes for division
+    config_class = {}  # Configuration of class distribution in clients
     config_data = {}  # Configuration of data indexes for each class : Config_data[cls] = [0, []] | pointer and indexes
 
-    # 为每个类别准备数据索引
-    for cls in range(num_classes):
-        indexes = torch.nonzero(trainset.targets == cls).squeeze()
+    for i in range(num_client):
+        config_class['f_{0:05d}'.format(i)] = []
+        for j in range(num_local_class):
+            cls = (i + j) % num_classes
+            if cls not in config_division:
+                config_division[cls] = 1
+                config_data[cls] = [0, []]
+            else:
+                config_division[cls] += 1
+            config_class['f_{0:05d}'.format(i)].append(cls)
+
+    # 为每个类别分配数据索引
+    for cls in config_division.keys():
+        indexes = torch.nonzero(trainset.targets == cls)
         num_datapoint = indexes.shape[0]
         indexes = indexes[torch.randperm(num_datapoint)]
-        config_data[cls] = [0, indexes]  # 指针和打乱后的索引
+        num_partition = num_datapoint // config_division[cls]
+        for i_partition in range(config_division[cls]):
+            if i_partition == config_division[cls] - 1:
+                config_data[cls][1].append(indexes[i_partition * num_partition:])
+            else:
+                config_data[cls][1].append(indexes[i_partition * num_partition: (i_partition + 1) * num_partition])
 
-    # 基于指定的分布为每个客户端分配数据
     total_samples = 0
-    for i in range(num_client):
-        user_id = f'f_{i:05d}'
-        user_data_indexes = []
-        distribution = client_distributions[i]
+    for user_idx, user in enumerate(config_class.keys()):
+        user_data_indexes = torch.tensor([])
+        for cls in config_class[user]:
+            user_data_index = config_data[cls][1][config_data[cls][0]]
+            user_data_indexes = torch.cat((user_data_indexes, user_data_index))
+            config_data[cls][0] += 1
+        user_data_indexes = user_data_indexes.squeeze().int().tolist()
 
-        # 确定该客户端的样本数量（简单平均分配）
-        num_samples_per_client = len(trainset) // num_client
-        if i < len(trainset) % num_client:
-            num_samples_per_client += 1  # 处理余数，确保所有样本都被分配
-
-        # 根据分布为客户端分配各类别的样本数量
-        num_samples_per_class = np.round(distribution * num_samples_per_client).astype(int)
-
-        # 调整可能因四舍五入导致的总数差异
-        diff = num_samples_per_client - num_samples_per_class.sum()
-        if diff != 0:
-            # 找到差异最大的类别进行调整
-            idx = np.argmax(distribution) if diff > 0 else np.argmin(distribution)
-            num_samples_per_class[idx] += diff
-
-        # 为客户端分配样本
-        for cls in range(num_classes):
-            if num_samples_per_class[cls] <= 0:
-                continue
-
-            # 获取该类别的可用数据
-            available_data = config_data[cls][1][config_data[cls][0]:]
-            samples_needed = min(num_samples_per_class[cls], len(available_data))
-
-            if samples_needed > 0:
-                user_data_indexes.extend(available_data[:samples_needed].tolist())
-                config_data[cls][0] += samples_needed  # 更新指针
-
+        # 创建用户数据集
         user_data = Subset(trainset, user_data_indexes)
-        trainset_config['users'].append(user_id)
-        trainset_config['user_data'][user_id] = user_data
+
+        # 标签调整
+        if label_adjustment is not None:
+            adjustment_ratio = label_adjustment[user_idx]
+            if adjustment_ratio > 0:  # 需要调整标签
+                # 获取当前用户数据的标签
+                original_labels = torch.tensor([trainset.targets[idx].item() for idx in user_data_indexes])
+                new_labels = original_labels.clone()
+
+                # 计算需要调整的标签数量
+                num_to_adjust = int(len(original_labels) * adjustment_ratio)
+                if num_to_adjust > 0:
+                    # 选择要调整的标签索引
+                    indices_to_adjust = np.random.choice(len(original_labels), num_to_adjust, replace=False)
+
+                    # 为每个选中的标签随机分配新类别
+                    for idx in indices_to_adjust:
+                        # 确保新标签与原标签不同
+                        possible_classes = list(range(num_classes))
+                        possible_classes.remove(int(original_labels[idx]))
+                        new_label = np.random.choice(possible_classes)
+                        new_labels[idx] = new_label
+
+                # 创建一个修改后的数据集副本
+                class ModifiedSubset(Subset):
+                    """修改后的Subset类，支持自定义标签"""
+
+                    def __init__(self, dataset, indices, labels):
+                        super().__init__(dataset, indices)
+                        self.labels = labels
+
+                    def __getitem__(self, idx):
+                        img, _ = super().__getitem__(idx)
+                        return img, self.labels[idx]
+
+                user_data = ModifiedSubset(trainset, user_data_indexes, new_labels)
+
+        trainset_config['users'].append(user)
+        trainset_config['user_data'][user] = user_data
         total_samples += len(user_data)
 
     trainset_config['num_samples'] = total_samples
 
-    # 打印客户端标签分布报告
+    # 打印标签分布报告
     if print_report:
-        print("\n===== 客户端标签分布报告 =====")
-        for i, user in enumerate(trainset_config['users']):
-            class_distribution = {}
-            user_data = trainset_config['user_data'][user]
-            for idx in range(len(user_data)):
-                label = int(trainset.targets[user_data.indices[idx]].item())
-                class_distribution[label] = class_distribution.get(label, 0) + 1
-
-            print(f"\n客户端 {user}:")
-            print(f"  随机标签比重: {client_label_ratios[i] if client_label_ratios is not None else 0}")
-            print(f"  样本总数: {len(user_data)}")
-            print("  标签分布:")
-            for label in sorted(class_distribution.keys()):
-                count = class_distribution[label]
-                print(f"    标签 {label}: {count} 样本 ({count / len(user_data):.2%})")
-
-        print("\n===== 总体分布 =====")
-        print(f"  总样本数: {len(trainset)}")
-        print("  标签分布:")
-        for label in range(num_classes):
-            count = int(global_distribution[label] * len(trainset))
-            print(f"    标签 {label}: {count} 样本 ({global_distribution[label]:.2%})")
-        print("====================\n")
+        print_label_distribution(trainset_config['user_data'], num_classes)
 
     return trainset_config, testset
 
@@ -208,12 +202,13 @@ if __name__ == "__main__":
     data_dict = ['SelfDataSet']
 
     for name in data_dict:
-        # 示例：5个客户端，随机标签比重分别为0.0, 0.25, 0.5, 0.75, 1.0
-        print(divide_data(
+        # 示例：划分5个客户端，每个客户端2个类别，打印分布报告，使用不同的标签调整策略
+        print(f"\n测试数据集: {name}")
+        _, _ = divide_data(
             num_client=5,
-            num_local_class=5,
+            num_local_class=2,
             dataset_name=name,
             i_seed=0,
             print_report=True,
-            client_label_ratios=[0.0, 0.25, 0.5, 0.75, 1.0]
-        ))
+            label_adjustment=[0.0, 0.3, 0.5, 0.7, 1.0]  # 不同客户端使用不同的标签调整比例
+        )
