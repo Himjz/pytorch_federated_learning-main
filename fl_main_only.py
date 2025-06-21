@@ -53,28 +53,6 @@ def fed_args():
     args = parser.parse_args()
     return args
 
-# 新增函数：统计并打印客户端标签分布
-def print_client_label_stats(client_dict, trainset_config):
-    for client_id in trainset_config['users']:
-        client_data = trainset_config['user_data'][client_id]
-        # 检查 client_data 是否有 targets 属性
-        if hasattr(client_data, 'targets'):
-            labels = client_data.targets
-            # 如果 labels 是张量，转换为 numpy 数组
-            if isinstance(labels, torch.Tensor):
-                labels = labels.cpu().numpy()
-        else:
-            # 若没有 targets 属性，尝试直接遍历获取标签
-            labels = []
-            for i in range(len(client_data)):
-                _, label = client_data[i]
-                labels.append(label)
-            labels = np.array(labels)
-
-        unique_labels, counts = np.unique(labels, return_counts=True)
-        label_dist = dict(zip(unique_labels, counts))
-        print(f"Client {client_id} Label Distribution: {label_dist}")
-
 def fed_run():
     """
     联邦学习基线的主函数
