@@ -17,12 +17,16 @@ from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet34_Weig
 
 # 为 CIFAR-10 定制的 AlexNet 模型，包含 1756426 个参数
 class AlexCifarNet(nn.Module):
-    supported_dims = {32}
+    supported_dims = {32, 300}  # 支持 32x32 和 300x300 的输入尺寸
 
-    def __init__(self):
+    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
         super(AlexCifarNet, self).__init__()
+        # 验证输入尺寸是否受支持
+        if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
+            raise ValueError(f"输入尺寸 {input_size} 不受支持，支持的尺寸为 {self.supported_dims}")
+
         self.features = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=5, stride=1, padding=2),
+            nn.Conv2d(in_channels, 64, kernel_size=5, stride=1, padding=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
             nn.LocalResponseNorm(4, alpha=0.001 / 9.0, beta=0.75, k=1),
@@ -31,17 +35,25 @@ class AlexCifarNet(nn.Module):
             nn.LocalResponseNorm(4, alpha=0.001 / 9.0, beta=0.75, k=1),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         )
+
+        # 提前计算全连接层的输入维度
+        with torch.no_grad():
+            test_input = torch.randn(1, in_channels, *input_size)
+            test_output = self.features(test_input)
+            test_output = test_output.view(test_output.size(0), -1)
+            flatten_size = test_output.size(1)
+
         self.classifier = nn.Sequential(
-            nn.Linear(4096, 384),
+            nn.Linear(flatten_size, 384),
             nn.ReLU(inplace=True),
             nn.Linear(384, 192),
             nn.ReLU(inplace=True),
-            nn.Linear(192, 10),
+            nn.Linear(192, num_classes),
         )
 
     def forward(self, x):
         out = self.features(x)
-        out = out.view(out.size(0), 4096)
+        out = out.view(out.size(0), -1)
         out = self.classifier(out)
         return out
 
@@ -144,13 +156,13 @@ def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
 
 
 class CNN(nn.Module):
-    def __init__(self, num_classes=10, in_channels=1):
+    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
         super(CNN, self).__init__()
 
         self.fp_con1 = nn.Sequential(OrderedDict([
             ('con0', nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=3, padding=1)),
             ('relu0', nn.ReLU(inplace=True)),
-            ]))
+        ]))
 
         self.ternary_con2 = nn.Sequential(OrderedDict([
             # 卷积层模块 1
@@ -167,7 +179,6 @@ class CNN(nn.Module):
             ('norm3', nn.BatchNorm2d(128)),
             ('relu3', nn.ReLU(inplace=True)),
             ('pool2', nn.MaxPool2d(kernel_size=2, stride=2)),
-            # nn.Dropout2d(p=0.05),
 
             # 卷积层模块 3
             ('conv3', nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1, bias=False)),
@@ -179,7 +190,15 @@ class CNN(nn.Module):
             ('pool4', nn.MaxPool2d(kernel_size=2, stride=2)),
         ]))
 
-        self.fp_fc = nn.Linear(4096, num_classes, bias = False)
+        # 提前计算全连接层的输入维度
+        with torch.no_grad():
+            test_input = torch.randn(1, in_channels, *input_size)
+            test_output = self.fp_con1(test_input)
+            test_output = self.ternary_con2(test_output)
+            test_output = test_output.view(test_output.size(0), -1)
+            flatten_size = test_output.size(1)
+
+        self.fp_fc = nn.Linear(flatten_size, num_classes, bias=False)
 
     def forward(self, x):
         x = self.fp_con1(x)
@@ -188,7 +207,6 @@ class CNN(nn.Module):
         x = self.fp_fc(x)
         output = F.log_softmax(x, dim=1)
         return output
-
 
 if __name__ == "__main__":
     model_name_list = ["ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152"]

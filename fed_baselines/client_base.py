@@ -4,6 +4,8 @@ from torch.utils.data import DataLoader
 from utils.fed_utils import assign_dataset, init_model
 from utils.models import *
 
+import random
+
 
 class FedClient(object):
     def __init__(self, name, epoch, dataset_id, model_name):
@@ -51,6 +53,55 @@ class FedClient(object):
         """
         self.trainset = trainset
         self.n_data = len(trainset)
+
+    def convert_to_malicious(self, ratio=1.0, random_seed=None):
+        """
+        将客户端转化为恶意客户端，在数据集有效标签内随机标注数据。
+        :param ratio: 要进行随机标注的数据比例，范围为 0.0 - 1.0
+        :param random_seed: 随机种子，用于复现随机标注的结果
+        """
+        if ratio < 0.0 or ratio > 1.0:
+            raise ValueError("Ratio must be between 0.0 and 1.0")
+
+        if random_seed is not None:
+            np.random.seed(random_seed)
+
+        num_data = len(self.trainset)
+        num_to_modify = int(ratio * num_data)
+
+        # 获取原始训练集的标签
+        if hasattr(self.trainset, 'targets'):
+            all_targets = self.trainset.targets
+        elif hasattr(self.trainset, 'dataset') and hasattr(self.trainset.dataset, 'targets'):
+            all_targets = self.trainset.dataset.targets
+        else:
+            raise AttributeError("Unable to access targets from the dataset.")
+
+        # 获取数据集的有效标签
+        valid_labels = np.unique(all_targets.numpy())
+
+        # 随机选择要修改的样本索引
+        indices_to_modify = np.random.choice(num_data, num_to_modify, replace=False)
+
+        for idx in indices_to_modify:
+            # 获取当前样本的真实标签
+            if hasattr(self.trainset, 'targets'):
+                true_label = self.trainset.targets[self.trainset.indices[idx]].item()
+            elif hasattr(self.trainset, 'dataset') and hasattr(self.trainset.dataset, 'targets'):
+                true_label = self.trainset.dataset.targets[self.trainset.indices[idx]].item()
+            else:
+                raise AttributeError("Unable to access targets from the dataset.")
+
+            # 随机选择一个不同的有效标签
+            new_label = np.random.choice(np.delete(valid_labels, np.where(valid_labels == true_label)))
+
+            # 修改标签
+            if hasattr(self.trainset, 'targets'):
+                self.trainset.targets[self.trainset.indices[idx]] = torch.tensor(new_label)
+            elif hasattr(self.trainset, 'dataset') and hasattr(self.trainset.dataset, 'targets'):
+                self.trainset.dataset.targets[self.trainset.indices[idx]] = torch.tensor(new_label)
+            else:
+                raise AttributeError("Unable to modify targets in the dataset.")
 
     def update(self, model_state_dict):
         """
