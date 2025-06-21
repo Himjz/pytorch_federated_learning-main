@@ -152,9 +152,6 @@ def fed_run():
     last_client_id = trainset_config['users'][-1]
     client_dict[last_client_id].convert_to_malicious(random_seed=config["system"]["i_seed"])
 
-    # 打印客户端标签统计报告
-    print_client_label_stats(client_dict, trainset_config)
-
     # 根据联邦学习算法和特定的联邦设置初始化服务器
     if config["client"]["fed_algo"] == 'FedAvg':
         fed_server = FedServer(trainset_config['users'], dataset_id=config["system"]["dataset"],
