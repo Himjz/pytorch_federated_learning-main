@@ -19,8 +19,8 @@ from fed_baselines.client_scaffold import ScaffoldClient
 from fed_baselines.server_base import FedServer
 from fed_baselines.server_fednova import FedNovaServer
 from fed_baselines.server_scaffold import ScaffoldServer
-# from fed_baselines.server_shapley_MonteCarlo import FedShapley
-from fed_baselines.server_shapley import FedShapley
+from fed_baselines.server_shapley_MonteCarlo import FedShapley
+# from fed_baselines.server_shapley import FedShapley
 from postprocessing.recorder import Recorder
 from preprocessing.self_dataloader import divide_data
 
@@ -74,7 +74,7 @@ def fed_run():
     assert config["system"]["dataset"] in dataset_list, "不支持该数据集"
 
     # 支持的模型列表
-    model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN"]
+    model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN", "EfficientCNN"]
     # 检查配置中的模型是否支持
     assert config["system"]["model"] in model_list, "不支持该模型"
 
@@ -100,7 +100,19 @@ def fed_run():
     trainset_config, testset = divide_data(num_client=config["system"]["num_client"],
                                            num_local_class=config["system"]["num_local_class"],
                                            dataset_name=config["system"]["dataset"],
-                                           i_seed=config["system"]["i_seed"])
+                                           i_seed=config["system"]["i_seed"],
+                                           print_report=True,
+                                           label_adjustment=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+
+    # 四轮实验:
+    # 第一轮[0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15] 模拟各样本可信度均较高且可信度均衡 (μ=0.85)
+    # 第二轮[0.0521, 0.1876, 0.3254, 0.2103, 0.4125, 0.0879, 0.2956, 0.1562, 0.3547, 0.0758]
+    # 模拟部分准确率极高，部分准确率极低且方差较大 (μ=0.7851, σ²=0.1808)
+    # 第三轮[0, 0.0556, 0.1111, 0.1667, 0.2222, 0.2778, 0.3333, 0.3889, 0.4444, 0.5]
+    # 模拟符合正态分布且准确率较高的样本 (μ=0.75, σ²=0.02)
+    # 第四轮[0.3333, 0.4444, 0.5556, 0.6667, 0.7500, 0.7778, 0.8333, 0.8889, 0.9444, 0.9722]
+    # 模拟符合正态分布且准确率偏低的样本 (μ=0.5, σ²=0.04)
+
     max_acc = 0
     # 根据联邦学习算法和特定的联邦设置初始化客户端
     for client_id in trainset_config['users']:
@@ -124,6 +136,7 @@ def fed_run():
             client_dict[client_id] = FedClient(client_id, dataset_id=config["system"]["dataset"],
                                                epoch=config["client"]["num_local_epoch"],
                                                model_name=config["system"]["model"])
+        print(trainset_config['user_data'][client_id])
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # 选取最后一个客户端作为完全恶意客户端
