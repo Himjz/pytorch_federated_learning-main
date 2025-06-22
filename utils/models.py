@@ -66,7 +66,7 @@ import torch.nn.functional as F
 class LeNet(nn.Module):
     supported_dims = {300}    # 导入农业数据集时将该参数改为300
 
-    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):   # 导入农业数据集时将input_size改为(300, 300)
+    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
         super(LeNet, self).__init__()
         # 验证输入尺寸是否受支持
         if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
@@ -159,55 +159,167 @@ class CNN(nn.Module):
     def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
         super(CNN, self).__init__()
 
-        self.fp_con1 = nn.Sequential(OrderedDict([
-            ('con0', nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=3, padding=1)),
-            ('relu0', nn.ReLU(inplace=True)),
-        ]))
+        # 第一组卷积块 - 处理原始尺寸特征
+        self.group1 = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)  # 150x150
+        )
 
-        self.ternary_con2 = nn.Sequential(OrderedDict([
-            # 卷积层模块 1
-            ('conv1', nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1, bias=False)),
-            ('norm1', nn.BatchNorm2d(64)),
-            ('relu1', nn.ReLU(inplace=True)),
-            ('pool1', nn.MaxPool2d(kernel_size=2, stride=2)),
+        # 第二组卷积块 - 提取中级特征
+        self.group2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)  # 75x75
+        )
 
-            # 卷积层模块 2
-            ('conv2', nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1, bias=False)),
-            ('norm2', nn.BatchNorm2d(128)),
-            ('relu2', nn.ReLU(inplace=True)),
-            ('conv3', nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1, bias=False)),
-            ('norm3', nn.BatchNorm2d(128)),
-            ('relu3', nn.ReLU(inplace=True)),
-            ('pool2', nn.MaxPool2d(kernel_size=2, stride=2)),
+        # 第三组卷积块 - 提取高级特征
+        self.group3 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=3)  # 25x25
+        )
 
-            # 卷积层模块 3
-            ('conv3', nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1, bias=False)),
-            ('norm3', nn.BatchNorm2d(256)),
-            ('relu3', nn.ReLU(inplace=True)),
-            ('conv4', nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1, bias=False)),
-            ('norm4', nn.BatchNorm2d(256)),
-            ('relu4', nn.ReLU(inplace=True)),
-            ('pool4', nn.MaxPool2d(kernel_size=2, stride=2)),
-        ]))
+        # 第四组卷积块 - 提取深度特征
+        self.group4 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=5, stride=5)  # 5x5
+        )
 
-        # 提前计算全连接层的输入维度
+        # 空间金字塔池化层 - 提取多尺度特征
+        self.spp = nn.AdaptiveAvgPool2d((5, 5))  # 固定输出5x5
+
+        # 动态计算全连接层的输入维度
         with torch.no_grad():
             test_input = torch.randn(1, in_channels, *input_size)
-            test_output = self.fp_con1(test_input)
-            test_output = self.ternary_con2(test_output)
+            test_output = self.group1(test_input)
+            test_output = self.group2(test_output)
+            test_output = self.group3(test_output)
+            test_output = self.group4(test_output)
+            test_output = self.spp(test_output)
             test_output = test_output.view(test_output.size(0), -1)
             flatten_size = test_output.size(1)
 
-        self.fp_fc = nn.Linear(flatten_size, num_classes, bias=False)
+        # 全连接分类器
+        self.classifier = nn.Sequential(
+            nn.Linear(flatten_size, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
+            nn.Linear(256, num_classes)
+        )
 
     def forward(self, x):
-        x = self.fp_con1(x)
-        x = self.ternary_con2(x)
+        x = self.group1(x)
+        x = self.group2(x)
+        x = self.group3(x)
+        x = self.group4(x)
+        x = self.spp(x)
         x = x.view(x.size(0), -1)
-        x = self.fp_fc(x)
-        output = F.log_softmax(x, dim=1)
-        return output
+        x = self.classifier(x)
+        return x
 
+class EfficientCNN(nn.Module):
+    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
+        super(EfficientCNN, self).__init__()
+
+        # 初始卷积层 - 使用步长2降低尺寸
+        self.initial = nn.Sequential(
+            nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1),  # 150x150
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True)
+        )
+
+        # 深度可分离卷积组 - 减少参数量
+        self.group1 = nn.Sequential(
+            # 深度可分离卷积
+            nn.Conv2d(32, 32, kernel_size=3, padding=1, groups=32),
+            nn.Conv2d(32, 64, kernel_size=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # 75x75
+
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, groups=64),
+            nn.Conv2d(64, 128, kernel_size=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=3)  # 25x25
+        )
+
+        # 注意力机制模块 - 增强特征选择
+        self.attention = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(128, 128 // 8, kernel_size=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128 // 8, 128, kernel_size=1),
+            nn.Sigmoid()
+        )
+
+        # 最终特征提取
+        self.final = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d((7, 7))  # 固定输出7x7
+        )
+
+        # 动态计算全连接层的输入维度
+        with torch.no_grad():
+            test_input = torch.randn(1, in_channels, *input_size)
+            test_output = self.initial(test_input)
+            test_output = self.group1(test_output)
+            test_output = test_output * self.attention(test_output)  # 应用注意力
+            test_output = self.final(test_output)
+            test_output = test_output.view(test_output.size(0), -1)
+            flatten_size = test_output.size(1)
+
+        # 简化的全连接分类器
+        self.classifier = nn.Sequential(
+            nn.Linear(flatten_size, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
+            nn.Linear(256, num_classes)
+        )
+
+    def forward(self, x):
+        x = self.initial(x)
+        x = self.group1(x)
+        x = x * self.attention(x)  # 应用注意力权重
+        x = self.final(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
 if __name__ == "__main__":
     model_name_list = ["ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152"]
     for model_name in model_name_list:
