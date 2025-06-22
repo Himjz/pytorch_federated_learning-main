@@ -66,10 +66,12 @@ class FedServer(object):
         """
         return self.model.state_dict()
 
-    def test(self, default: bool = True):
+    def test(self, default: bool = True, confidence_threshold: float = 0.0):
         """
-        服务器在测试数据集上测试模型。
-        :param default: 若为 True，返回准确率；若为 False，依次返回准确率、召回率、F1 分数、损失、精确率
+        服务器在测试数据集上测试模型，支持置信度阈值过滤
+        :param default: 若为 True，返回准确率；若为 False，返回完整评估指标
+        :param confidence_threshold: 置信度阈值，默认0.75
+        :return: 评估指标（根据default参数返回不同形式）
         """
         test_loader = DataLoader(self.testset, batch_size=self._batch_size, shuffle=True)
         self.model.to(self._device)
@@ -80,19 +82,37 @@ class FedServer(object):
 
         for step, (x, y) in enumerate(test_loader):
             with torch.no_grad():
-                b_x = x.to(self._device)  # 将数据移到 GPU 上
-                b_y = y.to(self._device)  # 将标签移到 GPU 上
+                b_x = x.to(self._device)
+                b_y = y.to(self._device)
 
+                # 前向传播获取模型输出
                 test_output = self.model(b_x)
-                pred_y = torch.max(test_output, 1)[1].to(self._device).data.squeeze()
+                # 计算softmax得到类别概率分布
+                probs = F.softmax(test_output, dim=1)
+                # 获取原始预测类别（最大概率类别）
+                pred_classes = torch.max(probs, 1)[1]
 
-                # 累加预测正确的样本数量
-                accuracy_collector += (pred_y == b_y).sum().item()
+                # 检查所有类别概率是否均小于阈值
+                all_below_threshold = torch.all(probs < confidence_threshold, dim=1)
 
-                # 计算损失
+                # 生成最终预测结果
+                pred_y = torch.where(all_below_threshold,
+                                     torch.full_like(pred_classes, -1, dtype=torch.long),
+                                     pred_classes)
+
+                # 仅计算可识别样本的准确率
+                valid_mask = (pred_y != -1)
+                valid_preds = pred_y[valid_mask]
+                valid_labels = b_y[valid_mask]
+
+                if valid_preds.numel() > 0:
+                    accuracy_collector += (valid_preds == valid_labels).sum().item()
+
+                # 计算损失（包含所有样本）
                 loss = F.cross_entropy(test_output, b_y)
                 loss_collector += loss.item()
 
+                # 收集所有预测结果（包含-1）
                 all_preds.extend(pred_y.cpu().numpy())
                 all_labels.extend(b_y.cpu().numpy())
 
@@ -102,9 +122,15 @@ class FedServer(object):
         if default:
             return accuracy
         else:
-            recall = recall_score(all_labels, all_preds, average='weighted')
-            f1 = f1_score(all_labels, all_preds, average='weighted')
-            precision = precision_score(all_labels, all_preds, average='weighted', zero_division=0)  # 避免警告
+            # 过滤出可识别样本的标签和预测
+            valid_preds = [p for p, l in zip(all_preds, all_labels) if p != -1]
+            valid_labels = [l for p, l in zip(all_preds, all_labels) if p != -1]
+
+            # 计算评估指标（仅可识别样本），添加zero_division=1参数
+            recall = recall_score(valid_labels, valid_preds, average='weighted', zero_division=1)
+            f1 = f1_score(valid_labels, valid_preds, average='weighted', zero_division=1)
+            precision = precision_score(valid_labels, valid_preds, average='weighted', zero_division=1)
+
             return accuracy, recall, f1, avg_loss, precision
 
     def select_clients(self, connection_ratio=1):
