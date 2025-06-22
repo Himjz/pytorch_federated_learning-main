@@ -136,7 +136,7 @@ def fed_run():
             client_dict[client_id] = FedClient(client_id, dataset_id=config["system"]["dataset"],
                                                epoch=config["client"]["num_local_epoch"],
                                                model_name=config["system"]["model"])
-        print(trainset_config['user_data'][client_id])
+        # print(trainset_config['user_data'][client_id])
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # 选取最后一个客户端作为完全恶意客户端
