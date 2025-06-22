@@ -128,7 +128,7 @@ def print_label_accuracy(accuracies, label_adjustment, title="标签准确率报
     """
     print(f"\n===== {title} =====")
     for i, (user, acc) in enumerate(accuracies.items()):
-        print(f"客户端 {user} (调整比例: {label_adjustment[i]:.1f}): 准确率 = {acc:.4f}")
+        print(f"客户端 {user} (调整比例: {label_adjustment[i]:.4f}): 准确率 = {acc:.4f}")
 
     # 计算平均准确率
     avg_accuracy = sum(accuracies.values()) / len(accuracies) if accuracies else 0.0
