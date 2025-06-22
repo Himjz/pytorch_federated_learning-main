@@ -4,8 +4,6 @@ from torch.utils.data import DataLoader
 from utils.fed_utils import assign_dataset, init_model
 from utils.models import *
 
-import random
-
 
 class FedClient(object):
     def __init__(self, name, epoch, dataset_id, model_name):
