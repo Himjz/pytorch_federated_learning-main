@@ -139,10 +139,6 @@ def fed_run():
         # print(trainset_config['user_data'][client_id])
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
-    # 选取最后一个客户端作为完全恶意客户端
-    last_client_id = trainset_config['users'][-1]
-    client_dict[last_client_id].convert_to_malicious(random_seed=config["system"]["i_seed"])
-
     # 根据联邦学习算法和特定的联邦设置初始化服务器
     if config["client"]["fed_algo"] == 'FedAvg':
         fed_server = FedServer(trainset_config['users'], dataset_id=config["system"]["dataset"],
