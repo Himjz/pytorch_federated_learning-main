@@ -11,7 +11,6 @@ class FedShapley(server_base.FedServer):
         self.client_states = {}
         self.client_data_sizes = {}
         self.client_losses = {}
-        # 新增蒙特卡洛采样次数参数
         self.monte_carlo_samples = monte_carlo_samples
 
     def agg(self):
@@ -52,11 +51,9 @@ class FedShapley(server_base.FedServer):
         shapley_values = {client: 0 for client in clients}
 
         for _ in range(self.monte_carlo_samples):
-            # 随机生成客户端的排列
             permutation = random.sample(clients, n_clients)
             subset = set()
             for client in permutation:
-                # 计算包含客户端的子集和不包含客户端的子集的贡献差
                 marginal_contribution = self.evaluate_subset(subset.union({client})) - self.evaluate_subset(subset)
                 shapley_values[client] += marginal_contribution
                 subset.add(client)
