@@ -6,7 +6,7 @@ from torch.utils.data import Subset
 import numpy as np
 
 
-def load_data(name, root='dt', download=True, save_pre_data=True):
+def load_data(name, root='dt1', download=True, save_pre_data=True):
     """
     加载图像数据集
 
@@ -31,7 +31,6 @@ def load_data(name, root='dt', download=True, save_pre_data=True):
     if name == 'SelfDataSet':
         # 定义数据转换
         transform = transforms.Compose([
-            transforms.Resize((300, 300)),  # 调整图像大小
             transforms.Grayscale(num_output_channels=1),  # 转换为灰度图
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485], std=[0.229])  # 灰度图只有一个通道，调整归一化参数

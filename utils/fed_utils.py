@@ -42,8 +42,8 @@ def assign_dataset(dataset_name):
         image_dim = 64
         image_channel = 3
     elif dataset_name == 'SelfDataSet':
-        num_class = 4
-        image_dim = 28
+        num_class = 38
+        image_dim = 256
         image_channel = 1
     else:
         # 若数据集名称不支持，抛出异常
@@ -75,6 +75,8 @@ def init_model(model_name, num_class, image_channel):
         model = LeNet(num_classes=num_class, in_channels=image_channel)
     elif model_name == "CNN":
         model = CNN(num_classes=num_class, in_channels=image_channel)
+    elif model_name == "EfficientCNN":
+        model = EfficientCNN(num_classes=num_class, in_channels=image_channel)
     elif model_name == "VGG11":
         model = generate_vgg(num_classes=num_class, in_channels=image_channel, model_name=model_name)
     elif model_name == "VGG11_bn":
