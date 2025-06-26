@@ -1,16 +1,16 @@
 system:
   num_client: 10
-  num_local_class: 2
+  num_local_class: 6
   dataset: "SelfDataSet"
-  model: "CNN"
+  model: "ResNet18"
   i_seed: 235235
-  num_round: 150
+  num_round: 10
   res_root: "results"
 
 client:
   fed_algo: "FedShapley"
   lr: 0.01
-  batch_size: 32
-  num_local_epoch: 3
+  batch_size: 10
+  num_local_epoch: 2
   momentum: 0.9
-  num_worker: 2
+  num_worker: 8
