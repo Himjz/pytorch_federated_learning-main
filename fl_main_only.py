@@ -102,7 +102,7 @@ def fed_run():
                                            dataset_name=config["system"]["dataset"],
                                            i_seed=config["system"]["i_seed"],
                                            print_report=True,
-                                           label_adjustment=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
+                                           label_adjustment=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
     # 四轮实验:
     # 第一轮[0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15] 模拟各样本可信度均较高且可信度均衡 (μ=0.85)
@@ -245,8 +245,8 @@ def fed_run():
         global_agg_time = end_agg - start_agg
 
         # 测试与刷新
-        accuracy = fed_server.test()
-        accuracy_extra, recall, f1, avg_loss, precision = fed_server.test(default=False)
+        accuracy = fed_server.test(confidence_threshold=0.8)
+        accuracy_extra, recall, f1, avg_loss, precision = fed_server.test(confidence_threshold=0,default=False)
         fed_server.flush()
 
         # 记录时间和指标
