@@ -1,8 +1,7 @@
-from collections import OrderedDict
-
 import numpy as np
 import torch.nn as nn
 import torchvision.models as models
+from torch.utils.checkpoint import checkpoint
 from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet34_Weights, ResNet101_Weights, \
     ResNet152_Weights
 
@@ -64,9 +63,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class LeNet(nn.Module):
-    supported_dims = {300}    # 导入农业数据集时将该参数改为300
+    supported_dims = {256}    # 导入农业数据集时将该参数改为300
 
-    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
+    def __init__(self, num_classes=10, in_channels=1, input_size=(256, 256)):
         super(LeNet, self).__init__()
         # 验证输入尺寸是否受支持
         if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
@@ -246,64 +245,65 @@ class CNN(nn.Module):
         x = self.classifier(x)
         return x
 
-class EfficientCNN(nn.Module):
-    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
-        super(EfficientCNN, self).__init__()
 
-        # 初始卷积层 - 使用步长2降低尺寸
-        self.initial = nn.Sequential(
-            nn.Conv2d(in_channels, 16, kernel_size=3, stride=2, padding=1),  # 150x150
+class EfficientCNN(nn.Module):
+    def __init__(self, num_classes=10, in_channels=1, input_size=(256, 256)):
+        super(EfficientCNN, self).__init__()
+        # 验证输入尺寸
+        if input_size != (256, 256):
+            raise ValueError("仅支持 256x256 输入尺寸")
+
+        # 第一组卷积块 - 使用深度可分离卷积
+        self.group1 = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, groups=in_channels),
+            nn.Conv2d(in_channels, 16, kernel_size=1),
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
-            nn.Conv2d(16, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True)
+            nn.MaxPool2d(kernel_size=2, stride=2)  # 128x128
         )
 
-        # 深度可分离卷积组 - 减少参数量
-        self.group1 = nn.Sequential(
-            # 深度可分离卷积
+        # 第二组卷积块 - 使用深度可分离卷积
+        self.group2 = nn.Sequential(
+            nn.Conv2d(16, 16, kernel_size=3, padding=1, groups=16),
+            nn.Conv2d(16, 32, kernel_size=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)  # 64x64
+        )
+
+        # 第三组卷积块 - 使用深度可分离卷积
+        self.group3 = nn.Sequential(
             nn.Conv2d(32, 32, kernel_size=3, padding=1, groups=32),
             nn.Conv2d(32, 64, kernel_size=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # 75x75
+            nn.MaxPool2d(kernel_size=2, stride=2)  # 32x32
+        )
 
+        # 第四组卷积块 - 使用深度可分离卷积
+        self.group4 = nn.Sequential(
             nn.Conv2d(64, 64, kernel_size=3, padding=1, groups=64),
             nn.Conv2d(64, 128, kernel_size=1),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=3)  # 25x25
+            nn.MaxPool2d(kernel_size=2, stride=2)  # 16x16
         )
 
-        # 注意力机制模块 - 增强特征选择
-        self.attention = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(128, 128 // 8, kernel_size=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128 // 8, 128, kernel_size=1),
-            nn.Sigmoid()
-        )
-
-        # 最终特征提取
-        self.final = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((7, 7))  # 固定输出7x7
-        )
+        # 空间金字塔池化层 - 提取多尺度特征
+        self.spp = nn.AdaptiveAvgPool2d((4, 4))  # 固定输出4x4
 
         # 动态计算全连接层的输入维度
         with torch.no_grad():
             test_input = torch.randn(1, in_channels, *input_size)
-            test_output = self.initial(test_input)
-            test_output = self.group1(test_output)
-            test_output = test_output * self.attention(test_output)  # 应用注意力
-            test_output = self.final(test_output)
+            test_output = self.group1(test_input)
+            test_output = self.group2(test_output)
+            test_output = self.group3(test_output)
+            test_output = self.group4(test_output)
+            test_output = self.spp(test_output)
             test_output = test_output.view(test_output.size(0), -1)
             flatten_size = test_output.size(1)
 
-        # 简化的全连接分类器
+        # 全连接分类器
         self.classifier = nn.Sequential(
             nn.Linear(flatten_size, 256),
             nn.BatchNorm1d(256),
@@ -313,17 +313,22 @@ class EfficientCNN(nn.Module):
         )
 
     def forward(self, x):
-        x = self.initial(x)
         x = self.group1(x)
-        x = x * self.attention(x)  # 应用注意力权重
-        x = self.final(x)
+        x = self.group2(x)
+        x = self.group3(x)
+        x = self.group4(x)
+        x = self.spp(x)
         x = x.view(x.size(0), -1)
         x = self.classifier(x)
         return x
+
 if __name__ == "__main__":
-    model_name_list = ["ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152"]
+    model_name_list = ["CNN", "EfficientCNN"]
     for model_name in model_name_list:
-        model = generate_resnet(num_classes=10, in_channels=1, model_name=model_name)
+        if model_name == "CNN":
+            model = CNN(num_classes=10, in_channels=1, input_size=(300, 300))
+        elif model_name == "EfficientCNN":
+            model = EfficientCNN(num_classes=10, in_channels=1, input_size=(256, 256))
         model_parameters = filter(lambda p: p.requires_grad, model.parameters())
         param_len = sum([np.prod(p.size()) for p in model_parameters])
         print('Number of model parameters of %s :' % model_name, ' %d ' % param_len)
