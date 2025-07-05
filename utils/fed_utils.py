@@ -83,6 +83,8 @@ def init_model(model_name, num_class, image_channel):
         model = generate_vgg(num_classes=num_class, in_channels=image_channel, model_name=model_name)
     elif model_name == "AlexCifarNet":
         model = AlexCifarNet()
+    elif model_name == "MobileNetV2":
+        model = generate_mobilenet(num_classes=num_class, in_channels=image_channel, model_name=model_name)
     else:
         print('Model is not supported')
 

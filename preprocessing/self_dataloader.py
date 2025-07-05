@@ -6,7 +6,7 @@ from torch.utils.data import Subset
 import numpy as np
 
 
-def load_data(name, root='dt1', download=True, save_pre_data=True):
+def load_data(name, root='dt2', download=True, save_pre_data=True):
     """
     加载图像数据集
 

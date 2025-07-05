@@ -74,7 +74,7 @@ def fed_run():
     assert config["system"]["dataset"] in dataset_list, "不支持该数据集"
 
     # 支持的模型列表
-    model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN", "EfficientCNN"]
+    model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN", "EfficientCNN", "MobileNetV2"]
     # 检查配置中的模型是否支持
     assert config["system"]["model"] in model_list, "不支持该模型"
 
@@ -245,7 +245,7 @@ def fed_run():
         global_agg_time = end_agg - start_agg
 
         # 测试与刷新
-        accuracy = fed_server.test(confidence_threshold=0.8)
+        accuracy = fed_server.test(confidence_threshold=0)
         accuracy_extra, recall, f1, avg_loss, precision = fed_server.test(confidence_threshold=0,default=False)
         fed_server.flush()
 

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torchvision.models as models
 from torch.utils.checkpoint import checkpoint
 from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet34_Weights, ResNet101_Weights, \
-    ResNet152_Weights
+    ResNet152_Weights, MobileNet_V2_Weights
 
 """
 我们提供了可能在 FedD3 实验中使用的模型，如下所示：
@@ -11,6 +11,8 @@ from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet34_Weig
     - 为 MNIST 定制的 LeNet 模型，包含 61706 个参数
     - 更多的 ResNet 模型
     - 更多的 VGG 模型
+    - MobileNet 模型
+    - ShuffleNet 模型
 """
 
 
@@ -322,14 +324,28 @@ class EfficientCNN(nn.Module):
         x = self.classifier(x)
         return x
 
+# 生成 MobileNet 模型
+def generate_mobilenet(num_classes=10, in_channels=1, model_name="MobileNetV2"):
+    if model_name == "MobileNetV2":
+        model = models.mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
+    # 若后续支持更多 MobileNet 版本，可在此添加
+    # 修改输入通道
+    model.features[0][0] = nn.Conv2d(in_channels, 32, kernel_size=3, stride=2, padding=1, bias=False)
+    # 修改输出类别数
+    model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
+    return model
+
 if __name__ == "__main__":
-    model_name_list = ["CNN", "EfficientCNN"]
+    model_name_list = ["CNN", "EfficientCNN", "MobileNetV2", "ShuffleNetV2"]
     for model_name in model_name_list:
         if model_name == "CNN":
             model = CNN(num_classes=10, in_channels=1, input_size=(300, 300))
         elif model_name == "EfficientCNN":
             model = EfficientCNN(num_classes=10, in_channels=1, input_size=(256, 256))
+        elif model_name == "MobileNetV2":
+            model = generate_mobilenet(num_classes=10, in_channels=1, model_name=model_name)
         model_parameters = filter(lambda p: p.requires_grad, model.parameters())
         param_len = sum([np.prod(p.size()) for p in model_parameters])
         print('Number of model parameters of %s :' % model_name, ' %d ' % param_len)
+
 
