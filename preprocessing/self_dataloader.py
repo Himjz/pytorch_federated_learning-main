@@ -18,7 +18,7 @@ class ModifiedSubset(Subset):
         return img, self.labels[idx]
 
 
-def load_data(name, root='dt2', download=True, save_pre_data=True):
+def load_data(name, root='dt1', download=True, save_pre_data=True):
     """
     加载图像数据集
 
@@ -118,7 +118,7 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_
     torch.manual_seed(i_seed)
     np.random.seed(i_seed)
 
-    trainset, testset, len_classes = load_data(dataset_name, download=True, save_pre_data=False)
+    trainset, testset, len_classes = load_data(dataset_name, root='dt3', download=True, save_pre_data=False)
     num_classes = len_classes
 
     assert 0 < num_local_class <= num_classes, "本地类别数量必须在1到总类别数之间"
