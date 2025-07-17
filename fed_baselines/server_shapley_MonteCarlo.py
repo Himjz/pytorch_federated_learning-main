@@ -38,12 +38,10 @@ class FedShapley(server_base.FedServer):
         return aggregated_state_dict, avg_loss, total_data
 
     def rec(self, name, state_dict, n_data, loss):
-        # 记录客户端的模型参数、数据量和损失
         self.client_states[name] = state_dict
         self.client_data_sizes[name] = n_data
         self.client_losses[name] = loss
-        # 确保客户端数据量被记录到 server_base 的 client_n_data 中
-        self.client_n_data[name] = n_data
+
 
     def calculate_shapley_values(self):
         clients = list(self.client_states.keys())
