@@ -26,7 +26,7 @@ class EfficientDataset(Dataset):
         return self.base_images[base_idx], label
 
 
-def load_base_data(root='../dt2'):
+def load_base_data(root='dt2'):
     """加载原始数据（仅加载一次，返回引用）"""
     transform = transforms.Compose([
         transforms.Grayscale(num_output_channels=1),
