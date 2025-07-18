@@ -1,7 +1,6 @@
 ## 一般夏普利值方法下,100个客户端在原始每轮14秒时，需计算5.93*10^27年
 ## 这里采用蒙特卡洛方法，减少计算量
 from fed_baselines import server_base
-import itertools
 import copy
 import random
 
@@ -12,6 +11,10 @@ class FedShapley(server_base.FedServer):
         self.client_data_sizes = {}
         self.client_losses = {}
         self.monte_carlo_samples = monte_carlo_samples
+
+    # 添加 select_clients 方法
+    def select_clients(self, connection_ratio=1):
+        return super().select_clients(connection_ratio)
 
     def agg(self):
         # 计算所有客户端的夏普利值
