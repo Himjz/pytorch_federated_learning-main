@@ -6,14 +6,15 @@ import random
 
 class FedShapley(server_base.FedServer):
     def __init__(self, client_list, dataset_id, model_name, monte_carlo_samples=100):
+        # 调用父类初始化方法
         super().__init__(client_list, dataset_id, model_name)
         self.client_states = {}
         self.client_data_sizes = {}
         self.client_losses = {}
         self.monte_carlo_samples = monte_carlo_samples
 
-    # 添加 select_clients 方法
     def select_clients(self, connection_ratio=1):
+        # 直接调用父类的选择客户端方法
         return super().select_clients(connection_ratio)
 
     def agg(self):
@@ -34,17 +35,20 @@ class FedShapley(server_base.FedServer):
             client_loss = self.client_losses[client_name]
             for key in aggregated_state_dict.keys():
                 aggregated_state_dict[key] += shapley_value * client_state[key]
-            avg_loss += client_loss * (client_data / total_data) if total_data > 0 else 0
+            if total_data > 0:
+                avg_loss += client_loss * (client_data / total_data)
+
         self.round = self.round + 1
         self.model.load_state_dict(aggregated_state_dict)
-        total_data += 1
         return aggregated_state_dict, avg_loss, total_data
 
     def rec(self, name, state_dict, n_data, loss):
+        # 记录客户端的模型参数、数据量和损失
         self.client_states[name] = state_dict
         self.client_data_sizes[name] = n_data
         self.client_losses[name] = loss
-
+        # 确保客户端数据量被记录到 server_base 的 client_n_data 中
+        self.client_n_data[name] = n_data
 
     def calculate_shapley_values(self):
         clients = list(self.client_states.keys())
@@ -75,10 +79,4 @@ class FedShapley(server_base.FedServer):
         total_loss = 0
         for client in subset:
             total_loss += self.client_losses[client]
-        return 1 / (total_loss + 1e-8)  # 避免除零错误
-
-    def factorial(self, n):
-        if n == 0 or n == 1:
-            return 1
-        else:
-            return n * self.factorial(n - 1)
+        return 1 / (total_loss + 1e-8)  # 避免除零错误            return n * self.factorial(n - 1)
