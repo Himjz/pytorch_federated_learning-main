@@ -1,7 +1,6 @@
 import numpy as np
 import torch.nn as nn
 import torchvision.models as models
-from torch.utils.checkpoint import checkpoint
 from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet34_Weights, ResNet101_Weights, \
     ResNet152_Weights, MobileNet_V2_Weights
 
@@ -157,93 +156,64 @@ def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
 
 
 class CNN(nn.Module):
-    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
+    def __init__(self, num_classes=10, init_channels=32, max_kernel_size=3):
         super(CNN, self).__init__()
+        self.num_classes = num_classes
+        self.init_channels = init_channels
+        self.max_kernel_size = max_kernel_size
 
-        # 第一组卷积块 - 处理原始尺寸特征
-        self.group1 = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)  # 150x150
-        )
+        # 动态卷积块（将在forward中确定具体参数）
+        self.conv_blocks = nn.ModuleList([
+            nn.Conv2d(1, init_channels, kernel_size=3, padding=1),  # 初始卷积层
+            nn.ReLU(),
+            nn.BatchNorm2d(init_channels)
+        ])
 
-        # 第二组卷积块 - 提取中级特征
-        self.group2 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)  # 75x75
-        )
+        # 中间卷积组（动态调整）
+        self.mid_conv = nn.ModuleList([
+            nn.Conv2d(init_channels, init_channels * 2, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.BatchNorm2d(init_channels * 2),
+            nn.Conv2d(init_channels * 2, init_channels * 4, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.BatchNorm2d(init_channels * 4)
+        ])
 
-        # 第三组卷积块 - 提取高级特征
-        self.group3 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=3)  # 25x25
-        )
-
-        # 第四组卷积块 - 提取深度特征
-        self.group4 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=5, stride=5)  # 5x5
-        )
-
-        # 空间金字塔池化层 - 提取多尺度特征
-        self.spp = nn.AdaptiveAvgPool2d((5, 5))  # 固定输出5x5
-
-        # 动态计算全连接层的输入维度
-        with torch.no_grad():
-            test_input = torch.randn(1, in_channels, *input_size)
-            test_output = self.group1(test_input)
-            test_output = self.group2(test_output)
-            test_output = self.group3(test_output)
-            test_output = self.group4(test_output)
-            test_output = self.spp(test_output)
-            test_output = test_output.view(test_output.size(0), -1)
-            flatten_size = test_output.size(1)
-
-        # 全连接分类器
+        # 分类头
         self.classifier = nn.Sequential(
-            nn.Linear(flatten_size, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d((1, 1)),  # 自适应池化确保固定输出尺寸
+            nn.Flatten(),
+            nn.Linear(init_channels * 4, 128),
+            nn.ReLU(),
             nn.Dropout(0.5),
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
-            nn.Linear(256, num_classes)
+            nn.Linear(128, num_classes)
         )
 
     def forward(self, x):
-        x = self.group1(x)
-        x = self.group2(x)
-        x = self.group3(x)
-        x = self.group4(x)
-        x = self.spp(x)
-        x = x.view(x.size(0), -1)
+        # 计算初始特征图尺寸
+        h, w = x.shape[2], x.shape[3]
+
+        # 动态调整第一个卷积块的池化操作
+        for layer in self.conv_blocks:
+            x = layer(x)
+
+        # 根据当前特征图尺寸确定池化参数
+        current_h, current_w = x.shape[2], x.shape[3]
+        pool_kernel = min(2, current_h // 2, current_w // 2)
+        if pool_kernel >= 1:
+            x = F.max_pool2d(x, kernel_size=pool_kernel, stride=pool_kernel)
+
+        # 处理中间卷积组
+        for i, layer in enumerate(self.mid_conv):
+            x = layer(x)
+            # 每两个卷积层后进行一次池化（动态调整）
+            if (i + 1) % 3 == 0:  # 每经过一个完整的卷积+BN块后池化
+                current_h, current_w = x.shape[2], x.shape[3]
+                pool_kernel = min(2, current_h // 2, current_w // 2)
+                if pool_kernel >= 1:
+                    x = F.max_pool2d(x, kernel_size=pool_kernel, stride=pool_kernel)
+
+        # 分类头
         x = self.classifier(x)
         return x
 
