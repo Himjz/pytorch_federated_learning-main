@@ -156,34 +156,34 @@ def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
 
 
 class CNN(nn.Module):
-    def __init__(self, num_classes=10, init_channels=32, max_kernel_size=3):
+    def __init__(self, num_classes=10, in_channels=32, max_kernel_size=3):
         super(CNN, self).__init__()
         self.num_classes = num_classes
-        self.init_channels = init_channels
+        self.init_channels = in_channels
         self.max_kernel_size = max_kernel_size
 
         # 动态卷积块（将在forward中确定具体参数）
         self.conv_blocks = nn.ModuleList([
-            nn.Conv2d(1, init_channels, kernel_size=3, padding=1),  # 初始卷积层
+            nn.Conv2d(1, in_channels, kernel_size=3, padding=1),  # 初始卷积层
             nn.ReLU(),
-            nn.BatchNorm2d(init_channels)
+            nn.BatchNorm2d(in_channels)
         ])
 
         # 中间卷积组（动态调整）
         self.mid_conv = nn.ModuleList([
-            nn.Conv2d(init_channels, init_channels * 2, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels, in_channels * 2, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.BatchNorm2d(init_channels * 2),
-            nn.Conv2d(init_channels * 2, init_channels * 4, kernel_size=3, padding=1),
+            nn.BatchNorm2d(in_channels * 2),
+            nn.Conv2d(in_channels * 2, in_channels * 4, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.BatchNorm2d(init_channels * 4)
+            nn.BatchNorm2d(in_channels * 4)
         ])
 
         # 分类头
         self.classifier = nn.Sequential(
             nn.AdaptiveAvgPool2d((1, 1)),  # 自适应池化确保固定输出尺寸
             nn.Flatten(),
-            nn.Linear(init_channels * 4, 128),
+            nn.Linear(in_channels * 4, 128),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(128, num_classes)
