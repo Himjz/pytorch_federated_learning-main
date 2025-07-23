@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from preprocessing.self_dataloader import divide_data
+from preprocessing.fed_dataloader import divide_data
 
 # 配置参数
 num_client = 10
