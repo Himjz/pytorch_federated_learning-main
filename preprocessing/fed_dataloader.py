@@ -77,6 +77,7 @@ def load_data(name, root='./data', download=True, load_path=None, device=None, p
         ]), 100),
     }
 
+    # 处理默认数据集
     if name in default_datasets:
         dataset_cls, transform, num_classes = default_datasets[name]
         if not os.path.exists(root):
@@ -93,31 +94,73 @@ def load_data(name, root='./data', download=True, load_path=None, device=None, p
             trainset.targets = torch.Tensor(trainset.labels)
             testset.targets = torch.Tensor(testset.labels)
 
-        base_images = [trainset[i][0].to(device) for i in range(len(trainset))] if preload_to_gpu else [trainset[i][0]
-                                                                                                        for i in range(
-                len(trainset))]
+        base_images = [trainset[i][0].to(device) for i in range(len(trainset))] if preload_to_gpu else [
+            trainset[i][0] for i in range(len(trainset))]
         base_labels = trainset.targets
 
         return base_images, base_labels, num_classes, testset
 
+    # 处理自定义数据集
     else:
-        if not load_path or not os.path.exists(load_path):
-            raise ValueError(f"数据集 '{name}' 不是默认数据集，且路径不存在: {load_path}")
+        # 从root目录下寻找与dataset_name同名的目录
+        dataset_root = os.path.join(root, name)
 
-        transform = transforms.Compose([
-            transforms.Grayscale(num_output_channels=1),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485], std=[0.229])
-        ])
+        # 检查目录是否存在
+        if not os.path.exists(dataset_root):
+            raise ValueError(f"数据集目录不存在: {dataset_root}")
 
-        trainset = torchvision.datasets.ImageFolder(root=os.path.join(load_path, 'train'), transform=transform)
-        testset = torchvision.datasets.ImageFolder(root=os.path.join(load_path, 'val'), transform=transform)
+        # 验证目录结构是否符合要求
+        train_dir = os.path.join(dataset_root, 'train')
+        val_dir = os.path.join(dataset_root, 'val')
 
-        base_images = [trainset[i][0].to(device) for i in range(len(trainset))] if preload_to_gpu else [trainset[i][0]
-                                                                                                        for i in range(
-                len(trainset))]
+        # 检查train和val子目录是否存在
+        if not os.path.isdir(train_dir) or not os.path.isdir(val_dir):
+            raise ValueError(f"数据集目录结构不符合要求。需要包含'train'和'val'子目录: {dataset_root}")
+
+        # 检查train和val目录下是否有类别子目录
+        train_classes = os.listdir(train_dir)
+        val_classes = os.listdir(val_dir)
+
+        if len(train_classes) == 0:
+            raise ValueError(f"'train'目录为空: {train_dir}")
+
+        if len(val_classes) == 0:
+            raise ValueError(f"'val'目录为空: {val_dir}")
+
+        # 检查类别是否一致（可选）
+        if set(train_classes) != set(val_classes):
+            print(f"警告: 'train'和'val'目录下的类别不完全一致: {train_classes} vs {val_classes}")
+
+        # 确定图像通道数（根据第一个图像）
+        sample_img_path = os.path.join(train_dir, train_classes[0],
+                                       os.listdir(os.path.join(train_dir, train_classes[0]))[0])
+        sample_img = Image.open(sample_img_path)
+        num_channels = len(sample_img.getbands())
+
+        # 设置相应的转换
+        if num_channels == 1:  # 灰度图像
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.5], std=[0.229])
+            ])
+        else:  # RGB图像
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+
+        # 加载数据集
+        trainset = torchvision.datasets.ImageFolder(root=train_dir, transform=transform)
+        testset = torchvision.datasets.ImageFolder(root=val_dir, transform=transform)
+
+        base_images = [trainset[i][0].to(device) for i in range(len(trainset))] if preload_to_gpu else [
+            trainset[i][0] for i in range(len(trainset))]
         base_labels = torch.Tensor(trainset.targets)
         num_classes = len(trainset.classes)
+
+        print(f"成功加载自定义数据集: {dataset_root}")
+        print(f"训练集样本数: {len(trainset)}, 验证集样本数: {len(testset)}")
+        print(f"类别数: {num_classes}, 类别列表: {trainset.classes}")
 
         return base_images, base_labels, num_classes, testset
 
