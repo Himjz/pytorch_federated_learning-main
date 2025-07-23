@@ -124,15 +124,14 @@ def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
 
     return model
 
-
-# 更多的 VGG 模型
 def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
     """
-    生成适配任意输入通道数的 VGG 模型
+    生成支持动态输入尺寸和任意通道数的VGG模型
+    适配28×28、256×256等多种图像尺寸
 
     参数:
     - num_classes: 分类类别数
-    - in_channels: 输入图像通道数
+    - in_channels: 输入图像通道数（1或3等）
     - model_name: 模型名称，支持: vgg11, vgg11_bn, vgg13, vgg13_bn, vgg16, vgg16_bn, vgg19, vgg19_bn
     """
     # 规范化模型名称并检查有效性
@@ -141,12 +140,13 @@ def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
     if not any(m in model_name for m in valid_models):
         raise ValueError(f"不支持的模型名称: {model_name}")
 
-    # 获取模型创建函数和预训练标志
-    use_pretrained = 'bn' in model_name
-    create_fn = getattr(models, model_name)
+    # 获取模型创建函数和BN标志
+    has_bn = 'bn' in model_name
+    base_model_name = next(m for m in valid_models if m in model_name)
+    create_fn = getattr(models, f"{base_model_name}{'_bn' if has_bn else ''}")
 
-    # 创建模型
-    model = create_fn(weights='DEFAULT' if use_pretrained else None)
+    # 创建基础模型（不使用预训练权重以避免尺寸适配问题）
+    model = create_fn(weights=None)
 
     # 修改输入通道
     if in_channels != 3:
@@ -158,23 +158,65 @@ def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
             padding=first_conv.padding,
             bias=first_conv.bias is not None
         )
-
-        # 预训练模型的权重处理
-        if use_pretrained and in_channels > 0:
-            channels_to_copy = min(in_channels, 3)
-            new_conv.weight.data[:, :channels_to_copy] = first_conv.weight.data[:, :channels_to_copy]
-
-            # 随机初始化新增通道
-            if in_channels < 3:
-                new_conv.weight.data[:, channels_to_copy:].normal_(0, 0.01)
-
         model.features[0] = new_conv
 
-    # 修改分类器输出
-    model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, num_classes)
+    # 替换分类器为动态适配结构
+    # 获取最后一个卷积层的输出通道数
+    last_conv_channels = next(
+        layer.out_channels
+        for layer in reversed(model.features)
+        if isinstance(layer, nn.Conv2d)
+    )
 
-    return model
+    # 动态分类器：使用全局池化消除空间尺寸依赖
+    model.classifier = nn.Sequential(
+        nn.AdaptiveAvgPool2d((7, 7)),  # 固定中间特征尺寸为7×7（VGG原始设计）
+        nn.Flatten(),
+        nn.Linear(last_conv_channels * 7 * 7, 4096),
+        nn.ReLU(True),
+        nn.Dropout(),
+        nn.Linear(4096, 4096),
+        nn.ReLU(True),
+        nn.Dropout(),
+        nn.Linear(4096, num_classes)
+    )
 
+    # 包装模型以动态调整池化层
+    class AdaptiveVGGWrapper(nn.Module):
+        def __init__(self, base_model):
+            super().__init__()
+            self.base_model = base_model
+            # 记录所有池化层位置
+            self.pool_layers = [
+                i for i, layer in enumerate(base_model.features)
+                if isinstance(layer, nn.MaxPool2d)
+            ]
+
+        def forward(self, x):
+            # 动态调整池化层
+            for i, layer in enumerate(self.base_model.features):
+                if i in self.pool_layers and isinstance(layer, nn.MaxPool2d):
+                    # 获取当前特征图尺寸
+                    h, w = x.shape[2], x.shape[3]
+                    kernel_size = layer.kernel_size[0] if isinstance(layer.kernel_size, tuple) else layer.kernel_size
+
+                    # 若特征图尺寸小于池化核，缩小池化核
+                    if h < kernel_size or w < kernel_size:
+                        new_kernel = min(kernel_size, h, w)
+                        x = nn.functional.max_pool2d(
+                            x,
+                            kernel_size=new_kernel,
+                            stride=min(layer.stride, new_kernel) if layer.stride else 1,
+                            padding=layer.padding
+                        )
+                        continue
+                # 正常通过当前层
+                x = layer(x)
+            # 经过分类器
+            x = self.base_model.classifier(x)
+            return x
+
+    return AdaptiveVGGWrapper(model)
 
 class CNN(nn.Module):
     def __init__(self, num_classes=10, in_channels=32, max_kernel_size=3):
