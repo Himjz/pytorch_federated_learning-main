@@ -1,5 +1,7 @@
 import numpy as np
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.models as models
 from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet34_Weights, ResNet101_Weights, \
     ResNet152_Weights, MobileNet_V2_Weights
@@ -59,9 +61,7 @@ class AlexCifarNet(nn.Module):
 
 
 # 为 MNIST 定制的 LeNet 模型，包含 61706 个参数
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+
 
 class LeNet(nn.Module):
     supported_dims = {256}    # 导入农业数据集时将该参数改为300
@@ -127,30 +127,51 @@ def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
 
 # 更多的 VGG 模型
 def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
-    if model_name == "VGG11":
-        model = models.vgg11(pretrained=False)
-    elif model_name == "VGG11_bn":
-        model = models.vgg11_bn(pretrained=True)
-    elif model_name == "VGG13":
-        model = models.vgg11(pretrained=False)
-    elif model_name == "VGG13_bn":
-        model = models.vgg11_bn(pretrained=True)
-    elif model_name == "VGG16":
-        model = models.vgg11(pretrained=False)
-    elif model_name == "VGG16_bn":
-        model = models.vgg11_bn(pretrained=True)
-    elif model_name == "VGG19":
-        model = models.vgg11(pretrained=False)
-    elif model_name == "VGG19_bn":
-        model = models.vgg11_bn(pretrained=True)
+    """
+    生成适配任意输入通道数的 VGG 模型
 
-    # first_conv_layer = [nn.Conv2d(1, 3, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True)]
-    # first_conv_layer.extend(list(model.features))
-    # model.features = nn.Sequential(*first_conv_layer)
-    # model.conv1 = nn.Conv2d(num_classes, 64, 7, stride=2, padding=3, bias=False)
+    参数:
+    - num_classes: 分类类别数
+    - in_channels: 输入图像通道数
+    - model_name: 模型名称，支持: vgg11, vgg11_bn, vgg13, vgg13_bn, vgg16, vgg16_bn, vgg19, vgg19_bn
+    """
+    # 规范化模型名称并检查有效性
+    model_name = model_name.lower().replace('_', '')
+    valid_models = ['vgg11', 'vgg13', 'vgg16', 'vgg19']
+    if not any(m in model_name for m in valid_models):
+        raise ValueError(f"不支持的模型名称: {model_name}")
 
-    fc_features = model.classifier[6].in_features
-    model.classifier[6] = nn.Linear(fc_features, num_classes)
+    # 获取模型创建函数和预训练标志
+    use_pretrained = 'bn' in model_name
+    create_fn = getattr(models, model_name)
+
+    # 创建模型
+    model = create_fn(weights='DEFAULT' if use_pretrained else None)
+
+    # 修改输入通道
+    if in_channels != 3:
+        first_conv = model.features[0]
+        new_conv = nn.Conv2d(
+            in_channels, first_conv.out_channels,
+            kernel_size=first_conv.kernel_size,
+            stride=first_conv.stride,
+            padding=first_conv.padding,
+            bias=first_conv.bias is not None
+        )
+
+        # 预训练模型的权重处理
+        if use_pretrained and in_channels > 0:
+            channels_to_copy = min(in_channels, 3)
+            new_conv.weight.data[:, :channels_to_copy] = first_conv.weight.data[:, :channels_to_copy]
+
+            # 随机初始化新增通道
+            if in_channels < 3:
+                new_conv.weight.data[:, channels_to_copy:].normal_(0, 0.01)
+
+        model.features[0] = new_conv
+
+    # 修改分类器输出
+    model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, num_classes)
 
     return model
 
