@@ -20,7 +20,7 @@ from fed_baselines.server_base import FedServer
 from fed_baselines.server_fednova import FedNovaServer
 from fed_baselines.server_scaffold import ScaffoldServer
 from postprocessing.recorder import Recorder
-from preprocessing.baselines_dataloader import divide_data
+from preprocessing.fed_dataloader import divide_data
 
 json_types = (list, dict, str, int, float, bool, type(None))
 
