@@ -96,8 +96,8 @@ def generate_report():
     return r
 
 
-def get_dependencies():
-    """根据 CUDA 环境获取所有依赖项及下载源，优化版本映射逻辑"""
+def get_pytorch_source():
+    """获取 PyTorch 专用源（根据 CUDA 环境）"""
     cuda_available, cuda_version = get_cuda_info()
 
     # 下载源设置
@@ -128,25 +128,63 @@ def get_dependencies():
                     break
 
             if cuda_folder:
-                print(f"选择 CUDA 版本对应目录: {cuda_folder}")
-                dependency_links = [f"{torch_mirror_base}/{cuda_folder}"]
+                selected_source = f"{torch_mirror_base}/{cuda_folder}"
+                print(f"选择 PyTorch 源: {selected_source}")
+                return selected_source
             else:
-                print(f"警告：CUDA {cuda_version} 版本较旧，可能不受支持，将使用 CPU 版本")
-                dependency_links = [default_index]
+                print(f"警告：CUDA {cuda_version} 版本较旧，使用默认源")
+                return default_index
 
         except (ValueError, IndexError) as e:
-            print(f"CUDA 版本解析失败 ({cuda_version}): {e}，将使用默认源安装 CPU 版本")
-            dependency_links = [default_index]
+            print(f"CUDA 版本解析失败 ({cuda_version}): {e}，使用默认源")
+            return default_index
     else:
-        print("未检测到 CUDA，将从默认源安装 CPU 版本")
-        dependency_links = [default_index]
+        print("未检测到 CUDA，使用默认源安装 CPU 版本")
+        return default_index
 
-    return dependency_links
+
+def run_command(command, description):
+    """执行命令并处理错误"""
+    print(f"\n{description}...")
+    print(f"执行命令: {' '.join(command)}")
+
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+        print(f"{description}成功")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"{description}失败:")
+        print(e.stdout)
+        return False
 
 
 # 生成并打印报告
 report = generate_report()
 print(report)
-subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements/requirements.txt"])
-subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements/requirements_torch.txt", "-i", get_dependencies()[0]])
+
+# 1. 更新 pip
+run_command(
+    [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+    "更新 pip"
+)
+
+# 2. 安装基础依赖
+run_command(
+    [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements.txt"],
+    "安装基础依赖"
+)
+
+# 3. 获取 PyTorch 源并安装相关依赖
+pytorch_source = get_pytorch_source()
+run_command(
+    [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements_torch.txt", "-i", pytorch_source],
+    "安装 PyTorch 相关依赖"
+)
+
+print("\n所有安装步骤执行完毕")
