@@ -118,6 +118,8 @@ def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
         model = models.resnet101(weights=ResNet101_Weights.IMAGENET1K_V1)
     elif model_name == "ResNet152":
         model = models.resnet152(weights=ResNet152_Weights.IMAGENET1K_V1)
+    else:
+        raise ValueError(f"不支持的 ResNet 模型: {model_name}")
     model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
     fc_features = model.fc.in_features
     model.fc = nn.Linear(fc_features, num_classes)
@@ -361,6 +363,8 @@ class EfficientCNN(nn.Module):
 def generate_mobilenet(num_classes=10, in_channels=1, model_name="MobileNetV2"):
     if model_name == "MobileNetV2":
         model = models.mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
+    else:
+        raise ValueError(f"不支持的模型名称: {model_name}")
     # 若后续支持更多 MobileNet 版本，可在此添加
     # 修改输入通道
     model.features[0][0] = nn.Conv2d(in_channels, 32, kernel_size=3, stride=2, padding=1, bias=False)
@@ -372,7 +376,7 @@ if __name__ == "__main__":
     model_name_list = ["CNN", "EfficientCNN", "MobileNetV2", "ShuffleNetV2"]
     for model_name in model_name_list:
         if model_name == "CNN":
-            model = CNN(num_classes=10, in_channels=1, input_size=(300, 300))
+            model = CNN(num_classes=10, in_channels=1)
         elif model_name == "EfficientCNN":
             model = EfficientCNN(num_classes=10, in_channels=1, input_size=(256, 256))
         elif model_name == "MobileNetV2":
