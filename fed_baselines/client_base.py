@@ -30,7 +30,6 @@ class FedClient(object):
 
         # 初始化本地训练和测试数据集
         self.trainset = None
-        self.test_data = None
 
         # 初始化本地模型
         self._num_class, self._image_dim, self._image_channel = assign_dataset(dataset_id)
