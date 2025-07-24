@@ -5,7 +5,7 @@ import copy
 import random
 
 class FedShapley(server_base.FedServer):
-    def __init__(self, client_list, dataset_id, model_name, monte_carlo_samples=100):
+    def __init__(self, client_list, dataset_id, model_name, monte_carlo_samples=120):
         # 调用父类初始化方法
         super().__init__(client_list, dataset_id, model_name)
         self.client_states = {}
@@ -79,4 +79,4 @@ class FedShapley(server_base.FedServer):
         total_loss = 0
         for client in subset:
             total_loss += self.client_losses[client]
-        return 1 / (total_loss + 1e-8)  # 避免除零错误            return n * self.factorial(n - 1)
+        return 1 / (total_loss + 1e-8)  # 避免除零错误
