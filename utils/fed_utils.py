@@ -41,7 +41,7 @@ def assign_dataset(dataset_name):
         num_class = 200
         image_dim = 64
         image_channel = 3
-    elif dataset_name == 'SelfDataSet':
+    elif dataset_name == 'dt2':
         num_class = 12                  # 在此处调整类别数量
         image_dim = 256
         image_channel = 1

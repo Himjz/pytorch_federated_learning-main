@@ -55,7 +55,7 @@ def to_numpy_label(label):
     return label.item() if torch.is_tensor(label) else label
 
 
-def load_data(name, root='./data', download=True, load_path=None, device=None, preload_to_gpu=False):
+def load_data(name, root='./data', download=True, device=None, preload_to_gpu=False, in_channels=3):
     """加载数据集，支持默认数据集和自定义数据集"""
     device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -132,15 +132,10 @@ def load_data(name, root='./data', download=True, load_path=None, device=None, p
         if set(train_classes) != set(val_classes):
             print(f"警告: 'train'和'val'目录下的类别不完全一致: {train_classes} vs {val_classes}")
 
-        # 确定图像通道数（根据第一个图像）
-        sample_img_path = os.path.join(train_dir, train_classes[0],
-                                       os.listdir(os.path.join(train_dir, train_classes[0]))[0])
-        sample_img = Image.open(sample_img_path)
-        num_channels = len(sample_img.getbands())
-
         # 设置相应的转换
-        if num_channels == 1:  # 灰度图像
+        if in_channels == 1:  # 灰度图像
             transform = transforms.Compose([
+                transforms.Grayscale(num_output_channels=1),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=[0.5], std=[0.229])
             ])
@@ -259,7 +254,7 @@ def divide_data(
         print_report=True,
         device=None,
         preload_to_gpu=False,
-        load_path=None
+        in_channels=1
 ):
     """划分数据集并应用不可信策略"""
     torch.manual_seed(i_seed)
@@ -269,9 +264,9 @@ def divide_data(
     # 加载数据
     base_images, base_labels, num_classes, testset = load_data(
         name=dataset_name,
-        load_path=load_path,
         device=device,
-        preload_to_gpu=preload_to_gpu
+        preload_to_gpu=preload_to_gpu,
+        in_channels=in_channels
     )
 
     # 按类别分组索引
@@ -415,7 +410,7 @@ if __name__ == "__main__":
         untrusted_strategies=[2.1, 3.5, 4.3, 0.5, 1.0],
         device=device,
         preload_to_gpu=False,
-        load_path=None
+        in_channels=1
     )
 
     for i in range(5):
