@@ -210,6 +210,8 @@ def print_distribution(clients, num_classes, title):
     print(f"\n===== {title} =====")
     for client_id, ds in clients.items():
         labels = [ds.custom_labels.get(idx, ds.base_labels[ds.indices[idx]]) for idx in range(len(ds))]
+        # 将 labels 列表中的元素转换为整数类型
+        labels = [int(label) if torch.is_tensor(label) else int(label) for label in labels]
         counts = torch.bincount(torch.tensor(labels), minlength=num_classes)
         print(f"客户端 {client_id}:")
         for cls in range(num_classes):
