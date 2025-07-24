@@ -3,8 +3,6 @@ import re
 import subprocess
 import sys
 
-from setuptools import setup, find_packages
-
 # 强制要求 Python 3.9+
 if sys.version_info < (3, 9):
     error_msg = f"""
@@ -102,28 +100,6 @@ def get_dependencies():
     """根据 CUDA 环境获取所有依赖项及下载源，优化版本映射逻辑"""
     cuda_available, cuda_version = get_cuda_info()
 
-    # 基础依赖（非 PyTorch 相关）
-    base_deps = [
-        'numpy~=2.3.1',
-        'scipy~=1.16.0',
-        'Pillow~=11.3.0',
-        'matplotlib~=3.10.1',
-        'tqdm~=4.67.1',
-        'opencv-python~=4.11.0.86',
-        'scikit-learn~=1.7.0',
-        'colorama~=0.4.6',
-        'pykeops~=2.3',
-        'pyyaml~=6.0.2',
-        'setuptools>=61.0',
-    ]
-
-    # PyTorch 相关依赖
-    torch_deps = [
-        "torch~=2.7.1",
-        "torchvision~=0.22.1",
-        "torchaudio~=2.7.1"
-    ]
-
     # 下载源设置
     default_index = "https://pypi.tuna.tsinghua.edu.cn/simple"  # 默认源（清华镜像）
     torch_mirror_base = "https://mirrors.nju.edu.cn/pytorch/whl"  # GPU版PyTorch专用源
@@ -165,37 +141,12 @@ def get_dependencies():
         print("未检测到 CUDA，将从默认源安装 CPU 版本")
         dependency_links = [default_index]
 
-    # 合并所有依赖
-    all_deps = base_deps + torch_deps
-    return all_deps, dependency_links
+    return dependency_links
 
 
 # 生成并打印报告
 report = generate_report()
 print(report)
-
-# 获取依赖项和下载源
-dependencies, links = get_dependencies()
-
-# 设置项目信息
-setup(
-    name='environment_checker',
-    version='1.0.0',
-    description='环境配置检查工具',
-    author='Your Name',
-    author_email='your.email@example.com',
-    python_requires='>=3.9',
-    packages=find_packages(),
-    install_requires=dependencies,
-    dependency_links=links,
-    # 添加元数据描述依赖源
-    long_description="""
-    # Environment Checker
-
-    自动检测系统环境并安装适配的深度学习依赖：
-    - 自动识别 CUDA 版本并安装对应 GPU 版本 PyTorch
-    - 非 PyTorch 依赖使用清华镜像源加速下载
-    - 支持 Python 3.9+
-    """,
-    long_description_content_type='text/markdown',
-)
+subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements/requirements.txt"])
+subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements/requirements_torch.txt", "-i", get_dependencies()[0]])

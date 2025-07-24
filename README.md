@@ -35,7 +35,7 @@ If you find this repository useful, please let me know with your stars:star:. Th
 
 ### Install requirements
 
-Run: `pip install -r requirements.txt` to install the required packages.
+Run: `python install.py` to install the required packages.
 
 ## Federated Dataset Preprocessing
 
