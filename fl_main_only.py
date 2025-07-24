@@ -74,7 +74,7 @@ def fed_run():
     assert config["system"]["dataset"] in dataset_list, "不支持该数据集"
 
     # 支持的模型列表
-    model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN", "EfficientCNN", "MobileNetV2"]
+    model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN", "EfficientCNN", "MobileNetV2","VGG11"]
     # 检查配置中的模型是否支持
     assert config["system"]["model"] in model_list, "不支持该模型"
 
@@ -99,22 +99,9 @@ def fed_run():
 
     trainset_config, testset = divide_data(num_client=config["system"]["num_client"],
                                            num_local_class=config["system"]["num_local_class"],
-                                           print_report=True,
-                                           k=2,
-                                           untrusted_strategies=[
-                                               4.3,  # 30%样本集中（轻微倾斜）
-                                               4.4,  # 40%样本集中
-                                               4.2,  # 20%样本集中（接近IID）
-                                               4.5,  # 50%样本集中（中等上限）
-                                               4.35,  # 35%样本集中
-                                               4.25,  # 25%样本集中
-                                               4.45,  # 45%样本集中
-                                               4.15,  # 15%样本集中（接近均匀）
-                                               4.3,  # 30%样本集中
-                                               4.4,  # 40%样本集中
-                                               4.2,  # 20%样本集中
-                                               4.5  # 50%样本集中
-                                           ])
+                                           dataset_name=config["system"]["dataset"],
+                                           i_seed=config["system"]["i_seed"],
+                                           print_report=True)
 
 
     max_acc = 0
