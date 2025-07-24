@@ -183,8 +183,6 @@ trainset_config, testset = divide_data(
 
     dataset_name='custom',  # 自定义数据集
 
-    load_path='./my_dataset',  # 自定义数据集路径
-
     untrusted_strategies=[2.3, 3.7, 1.0],
 
     device=device
