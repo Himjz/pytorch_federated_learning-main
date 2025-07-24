@@ -65,9 +65,6 @@ def fed_run():
     algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova"]
     assert config["client"]["fed_algo"] in algo_list, "The federated learning algorithm is not supported"
 
-    dataset_list = ['MNIST', 'CIFAR10', 'FashionMNIST', 'SVHN', 'CIFAR100']
-    assert config["system"]["dataset"] in dataset_list, "The dataset is not supported"
-
     model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN"]
     assert config["system"]["model"] in model_list, "The model is not supported"
 

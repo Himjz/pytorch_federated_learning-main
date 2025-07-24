@@ -68,11 +68,6 @@ def fed_run():
     # 检查配置中的算法是否支持
     assert config["client"]["fed_algo"] in algo_list, "不支持该联邦学习算法"
 
-    # 支持的数据集列表
-    dataset_list = ['MNIST', 'CIFAR10', 'FashionMNIST', 'SVHN', 'CIFAR100', 'SelfDataSet']
-    # 检查配置中的数据集是否支持
-    assert config["system"]["dataset"] in dataset_list, "不支持该数据集"
-
     # 支持的模型列表
     model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN", "EfficientCNN", "MobileNetV2","VGG11"]
     # 检查配置中的模型是否支持
