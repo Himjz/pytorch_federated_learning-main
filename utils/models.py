@@ -360,16 +360,31 @@ class EfficientCNN(nn.Module):
         return x
 
 # 生成 MobileNet 模型
-def generate_mobilenet(num_classes=10, in_channels=1, model_name="MobileNetV2"):
+def generate_mobilenet(num_classes=10, in_channels=1, model_name="MobileNetV2", input_size=None):
     if model_name == "MobileNetV2":
         model = models.mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
     else:
         raise ValueError(f"不支持的模型名称: {model_name}")
-    # 若后续支持更多 MobileNet 版本，可在此添加
+
     # 修改输入通道
     model.features[0][0] = nn.Conv2d(in_channels, 32, kernel_size=3, stride=2, padding=1, bias=False)
+
+    # 动态支持输入尺寸
+    if input_size is not None:
+        # 计算特征图尺寸
+        h, w = input_size
+        for i in range(1, len(model.features)):
+            module = model.features[i]
+            if isinstance(module, nn.MaxPool2d) or isinstance(module, nn.Conv2d) and module.stride == (2, 2):
+                h = (h + 1) // 2
+                w = (w + 1) // 2
+
+        # 替换最后一个平均池化层为自适应池化
+        model.avg_pool = nn.AdaptiveAvgPool2d((h, w))
+
     # 修改输出类别数
     model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
+
     return model
 
 if __name__ == "__main__":
