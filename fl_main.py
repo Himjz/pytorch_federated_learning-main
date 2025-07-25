@@ -78,7 +78,7 @@ def fed_run():
         'loss': []
     }
 
-    trainset_config, testset = divide_data(num_client=config["system"]["num_client"],
+    trainset_config, testset, info = divide_data(num_client=config["system"]["num_client"],
                                            num_local_class=config["system"]["num_local_class"],
                                            dataset_name=config["system"]["dataset"],
                                            i_seed=config["system"]["i_seed"])

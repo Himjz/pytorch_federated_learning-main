@@ -1,21 +1,19 @@
-import os
-import torch
+import random
+
 import torchvision
 import torchvision.transforms as transforms
-from PIL import Image
 from torch.utils.data import Dataset, DataLoader
-import numpy as np
-import random
+
+from utils import *
 
 
 class EfficientDataset(Dataset):
     """高效数据集类：支持GPU加速和多种不可信策略"""
-
     def __init__(self, base_images, base_labels, indices, custom_labels=None, device=None):
         self.base_images = base_images
         self.base_labels = base_labels
         self.indices = indices
-        self.custom_labels = custom_labels if custom_labels is not None else {}
+        self.custom_labels = custom_labels or {}
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.noisy_mask = torch.zeros(len(indices), dtype=torch.bool, device='cpu')
         self._precomputed_noise = None
@@ -50,100 +48,101 @@ class EfficientDataset(Dataset):
         return image, label
 
 
-def to_numpy_label(label):
-    """将标签转换为普通整数"""
-    return label.item() if torch.is_tensor(label) else label
+class DataSetInfo:
+    """数据集信息类，用于存储数据集的元信息"""
+    def __init__(self, num_classes, image_dim, image_channel):
+        self.num_classes = num_classes
+        self.image_dim = image_dim
+        self.image_channel = image_channel
+
+    def __str__(self):
+        return (f"数据集信息:\n"
+                f"  类别数: {self.num_classes}\n"
+                f"  图像尺寸: {self.image_dim}x{self.image_dim}\n"
+                f"  图像通道数: {self.image_channel}")
+
+    def get(self):
+        """返回数据集的基本信息"""
+        return self.num_classes, self.image_dim, self.image_channel
 
 
-def load_data(name, root='./data', download=True, device=None, preload_to_gpu=False, in_channels=3):
+def load_data(name, root='./data', download=True, device=None, preload_to_gpu=False, in_channels=3, image_size=None):
     """加载数据集，支持默认数据集和自定义数据集"""
     device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    default_datasets = {
-        'MNIST': (torchvision.datasets.MNIST, transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.1307,), (0.3081,))
-        ]), 10),
-        'CIFAR10': (torchvision.datasets.CIFAR10, transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
-        ]), 10),
-        'FashionMNIST': (torchvision.datasets.FashionMNIST, transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,))
-        ]), 10),
-        'CIFAR100': (torchvision.datasets.CIFAR100, transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-        ]), 100),
+    # 数据集配置映射
+    dataset_configs = {
+        'MNIST': (torchvision.datasets.MNIST, 10, 'targets', 1, 28),
+        'CIFAR10': (torchvision.datasets.CIFAR10, 10, 'targets', 3, 32),
+        'FashionMNIST': (torchvision.datasets.FashionMNIST, 10, 'targets', 1, 28),
+        'CIFAR100': (torchvision.datasets.CIFAR100, 100, 'targets', 3, 32),
+        'EMNIST': (torchvision.datasets.EMNIST, 47, 'targets', 1, 28),
+        'SVHN': (torchvision.datasets.SVHN, 10, 'labels', 3, 32),
     }
 
     # 处理默认数据集
-    if name in default_datasets:
-        dataset_cls, transform, num_classes = default_datasets[name]
-        if not os.path.exists(root):
-            os.makedirs(root, exist_ok=True)
+    if name in dataset_configs:
+        dataset_cls, num_classes, label_attr, default_channels, default_size = dataset_configs[name]
+        os.makedirs(root, exist_ok=True)
 
-        trainset = dataset_cls(root=root, train=True, download=download, transform=transform)
-        testset = dataset_cls(root=root, train=False, download=download, transform=transform)
+        # 确定图像尺寸
+        if image_size is None:
+            image_size = default_size
+            print(f"使用默认图像尺寸 {image_size}x{image_size} 用于 {name} 数据集")
+        else:
+            print(f"使用指定图像尺寸 {image_size}x{image_size} 用于 {name} 数据集")
 
-        # 确保标签为张量
-        if hasattr(trainset, 'targets'):
-            trainset.targets = torch.Tensor(trainset.targets)
-            testset.targets = torch.Tensor(testset.targets)
-        elif hasattr(trainset, 'labels'):
-            trainset.targets = torch.Tensor(trainset.labels)
-            testset.targets = torch.Tensor(testset.labels)
+        # 创建transform
+        transform = create_transform(image_size, in_channels or default_channels)
 
+        # 特殊处理不同数据集的加载参数
+        if name == 'EMNIST':
+            trainset = dataset_cls(root=root, split='balanced', train=True, download=download, transform=transform)
+            testset = dataset_cls(root=root, split='balanced', train=False, download=download, transform=transform)
+        elif name == 'SVHN':
+            trainset = dataset_cls(root=root, split='train', download=download, transform=transform)
+            testset = dataset_cls(root=root, split='test', download=download, transform=transform)
+        else:
+            trainset = dataset_cls(root=root, train=True, download=download, transform=transform)
+            testset = dataset_cls(root=root, train=False, download=download, transform=transform)
+
+        # 统一标签处理
+        base_labels = getattr(trainset, label_attr)
+        if not torch.is_tensor(base_labels):
+            base_labels = torch.tensor(base_labels)
+        test_labels = getattr(testset, label_attr)
+        if not torch.is_tensor(test_labels):
+            test_labels = torch.tensor(test_labels)
+        setattr(trainset, 'targets', base_labels)
+        setattr(testset, 'targets', test_labels)
+
+        # 预加载图像到GPU（如果需要）
         base_images = [trainset[i][0].to(device) for i in range(len(trainset))] if preload_to_gpu else [
             trainset[i][0] for i in range(len(trainset))]
-        base_labels = trainset.targets
 
-        return base_images, base_labels, num_classes, testset
+        return base_images, base_labels, num_classes, testset, DataSetInfo(num_classes, image_size, in_channels or default_channels)
 
     # 处理自定义数据集
     else:
-        # 从root目录下寻找与dataset_name同名的目录
         dataset_root = os.path.join(root, name)
-
-        # 检查目录是否存在
         if not os.path.exists(dataset_root):
             raise ValueError(f"数据集目录不存在: {dataset_root}")
 
-        # 验证目录结构是否符合要求
         train_dir = os.path.join(dataset_root, 'train')
         val_dir = os.path.join(dataset_root, 'val')
-
-        # 检查train和val子目录是否存在
         if not os.path.isdir(train_dir) or not os.path.isdir(val_dir):
             raise ValueError(f"数据集目录结构不符合要求。需要包含'train'和'val'子目录: {dataset_root}")
 
-        # 检查train和val目录下是否有类别子目录
-        train_classes = os.listdir(train_dir)
-        val_classes = os.listdir(val_dir)
+        # 确定图像尺寸
+        if image_size is None:
+            print("检测数据集中的主要图像尺寸...")
+            image_size = detect_dominant_image_size(train_dir)
+            print(f"检测到主要图像尺寸: {image_size}x{image_size}")
+        else:
+            print(f"使用指定图像尺寸 {image_size}x{image_size}")
 
-        if len(train_classes) == 0:
-            raise ValueError(f"'train'目录为空: {train_dir}")
-
-        if len(val_classes) == 0:
-            raise ValueError(f"'val'目录为空: {val_dir}")
-
-        # 检查类别是否一致（可选）
-        if set(train_classes) != set(val_classes):
-            print(f"警告: 'train'和'val'目录下的类别不完全一致: {train_classes} vs {val_classes}")
-
-        # 设置相应的转换
-        if in_channels == 1:  # 灰度图像
-            transform = transforms.Compose([
-                transforms.Grayscale(num_output_channels=1),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5], std=[0.229])
-            ])
-        else:  # RGB图像
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
+        # 创建transform
+        transform = create_transform(image_size, in_channels)
 
         # 加载数据集
         trainset = torchvision.datasets.ImageFolder(root=train_dir, transform=transform)
@@ -151,110 +150,42 @@ def load_data(name, root='./data', download=True, device=None, preload_to_gpu=Fa
 
         base_images = [trainset[i][0].to(device) for i in range(len(trainset))] if preload_to_gpu else [
             trainset[i][0] for i in range(len(trainset))]
-        base_labels = torch.Tensor(trainset.targets)
+        base_labels = torch.tensor(trainset.targets)
         num_classes = len(trainset.classes)
+        image_channel = in_channels or (3 if len(trainset[0][0]) == 3 else 1)
 
         print(f"成功加载自定义数据集: {dataset_root}")
         print(f"训练集样本数: {len(trainset)}, 验证集样本数: {len(testset)}")
         print(f"类别数: {num_classes}, 类别列表: {trainset.classes}")
 
-        return base_images, base_labels, num_classes, testset
+        return base_images, base_labels, num_classes, testset, DataSetInfo(num_classes, image_size, image_channel)
 
 
-def parse_strategy(strategy_code):
-    """解析策略代码（如2.1→稀疏，3.5→特征噪声）"""
-    try:
-        code = float(strategy_code)
-        integer_part = int(code)
-        decimal_part = code - integer_part
-
-        strategies = {
-            0: ('malicious', decimal_part),  # 恶意（准确率x）
-            2: ('sparse', decimal_part),  # 数据稀疏（比例x）
-            3: ('feature_noise', decimal_part),  # 特征噪声（比例x）
-            4: ('class_skew', decimal_part),  # 类别倾斜（比例x）
-        }
-
-        return strategies.get(integer_part, ('normal', 1.0))
-    except (ValueError, TypeError):
-        return 'normal', 1.0
-
-
-def apply_strategy(ds, strategy, ratio, client_classes, client_id):
-    """应用不可信策略到数据集"""
-    if strategy == 'sparse':
-        ds.is_data_sparse = True
-    elif strategy == 'feature_noise':
-        ds.set_feature_noise(ratio)
-    elif strategy == 'class_skew':
-        ds.is_class_skewed = True
-    elif strategy == 'malicious':
-        local_classes = client_classes[client_id]
-        num_corrupt = max(1, int(len(ds) * (1 - ratio)))
-
-        for idx in np.random.choice(len(ds), num_corrupt, replace=False):
-            true_label = to_numpy_label(ds.base_labels[ds.indices[idx]])
-            if true_label in local_classes:
-                possible_labels = [c for c in local_classes if c != true_label]
-                if possible_labels:
-                    ds.custom_labels[idx] = np.random.choice(possible_labels)
-
-
-def print_distribution(clients, num_classes, title):
-    """打印数据集分布"""
-    print(f"\n===== {title} =====")
-    for client_id, ds in clients.items():
-        labels = [ds.custom_labels.get(idx, ds.base_labels[ds.indices[idx]]) for idx in range(len(ds))]
-        # 将 labels 列表中的元素转换为整数类型
-        labels = [int(label) if torch.is_tensor(label) else int(label) for label in labels]
-        counts = torch.bincount(torch.tensor(labels), minlength=num_classes)
-        print(f"客户端 {client_id}:")
-        for cls in range(num_classes):
-            if counts[cls] > 0:
-                print(f"  类别 {cls}: {counts[cls]} 个样本")
-        if hasattr(ds, 'is_data_sparse'):
-            print(f"  数据稀疏: 是" if ds.is_data_sparse else "  数据稀疏: 否")
-        if ds.noisy_mask.any():
-            print(f"  特征噪声样本数: {ds.noisy_mask.sum().item()}")
-        if hasattr(ds, 'is_class_skewed'):
-            print(f"  类别倾斜: 是" if ds.is_class_skewed else "  类别倾斜: 否")
-        print()
-
-
-def calculate_accuracy(original_clients, adjusted_clients, device):
-    """计算标签准确率"""
-    accuracies = {}
-    for client_id in original_clients:
-        orig_ds = original_clients[client_id]
-        adj_ds = adjusted_clients[client_id]
-
-        # 获取调整后样本的原始索引
-        adjusted_orig_indices = [orig_ds.indices[idx] for idx in range(len(adj_ds))]
-
-        # 获取原始标签和调整后的标签
-        orig_labels = torch.tensor([orig_ds.base_labels[idx] for idx in adjusted_orig_indices], device=device)
-        adj_labels = torch.tensor(
-            [adj_ds.custom_labels.get(idx, adj_ds.base_labels[adj_ds.indices[idx]]) for idx in range(len(adj_ds))],
-            device=device)
-
-        # 计算准确率
-        accuracies[client_id] = (orig_labels == adj_labels).sum().item() / len(orig_labels) if len(
-            orig_labels) > 0 else 0.0
-
-    return accuracies
+def create_transform(image_size, in_channels):
+    """创建图像转换"""
+    return transforms.Compose([
+        transforms.Resize((image_size, image_size)),
+        transforms.Grayscale(num_output_channels=1) if in_channels == 1 else transforms.Lambda(lambda x: x),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.5] if in_channels == 1 else [0.485, 0.456, 0.406],
+            std=[0.229] if in_channels == 1 else [0.229, 0.224, 0.225]
+        )
+    ])
 
 
 def divide_data(
         num_client=1,
         num_local_class=10,
-        dataset_name='emnist',
+        dataset_name='MNIST',
         i_seed=0,
         untrusted_strategies=None,
         k=1,
         print_report=True,
         device=None,
         preload_to_gpu=False,
-        in_channels=1
+        in_channels=1,
+        image_size=None
 ):
     """划分数据集并应用不可信策略"""
     torch.manual_seed(i_seed)
@@ -262,12 +193,16 @@ def divide_data(
     device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # 加载数据
-    base_images, base_labels, num_classes, testset = load_data(
+    base_images, base_labels, num_classes, testset, dataset_info = load_data(
         name=dataset_name,
         device=device,
         preload_to_gpu=preload_to_gpu,
-        in_channels=in_channels
+        in_channels=in_channels,
+        image_size=image_size
     )
+
+    if print_report:
+        print(dataset_info)
 
     # 按类别分组索引
     class_indices = {cls: [] for cls in range(num_classes)}
@@ -287,15 +222,10 @@ def divide_data(
     # 分配样本索引
     client_indices = {cid: [] for cid in client_classes}
     for client_id, classes in client_classes.items():
-        # 获取客户端ID对应的索引
         client_index = int(client_id.split('_')[-1])
-
-        # 获取策略代码
         strategy_code = untrusted_strategies[client_index] if untrusted_strategies and client_index < len(
             untrusted_strategies) else 1.0
         strategy, ratio = parse_strategy(strategy_code)
-
-        # 类别倾斜策略需要选择主导类别
         dominant_cls = random.choice(classes) if strategy == 'class_skew' else None
 
         for cls in classes:
@@ -364,7 +294,7 @@ def divide_data(
                 print(f"客户端 {client_id}: 准确率 = {acc:.4f}")
             print(f"平均准确率: {sum(accuracies.values()) / len(accuracies):.4f}" if accuracies else "无准确率数据")
 
-    return trainset_config, testset
+    return trainset_config, testset, dataset_info
 
 
 def verify_loader(client_data, client_id, device):
@@ -389,6 +319,7 @@ def verify_loader(client_data, client_id, device):
 
     print(f"\n验证客户端 {client_id} 的加载器:")
     print(f"  图像设备: {batch_imgs.device}")
+    print(f"  图像形状: {batch_imgs.shape}")
     print(f"  返回标签: {batch_labels.tolist()}")
     print(f"  预期标签: {[ds.custom_labels.get(idx, ds.base_labels[ds.indices[idx]]) for idx in range(batch_size)]}")
     if ds.noisy_mask.any():
@@ -402,7 +333,8 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"使用设备: {device}")
 
-    trainset_config, testset = divide_data(
+    # 测试MNIST数据集
+    trainset_config, testset, dataset_info = divide_data(
         num_client=5,
         num_local_class=2,
         dataset_name='MNIST',
@@ -410,8 +342,15 @@ if __name__ == "__main__":
         untrusted_strategies=[2.1, 3.5, 4.3, 0.5, 1.0],
         device=device,
         preload_to_gpu=False,
-        in_channels=1
+        in_channels=1,
+        image_size=32  # 指定图像尺寸
     )
+
+    print("\n数据集信息:")
+    num_classes, img_dim, img_channel = dataset_info.get()
+    print(f"  类别数: {num_classes}")
+    print(f"  图像尺寸: {img_dim}x{img_dim}")
+    print(f"  图像通道数: {img_channel}")
 
     for i in range(5):
         verify_loader(trainset_config['user_data'], f'f_0000{i}', device)
