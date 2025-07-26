@@ -1,32 +1,26 @@
-import sys
-from pathlib import Path
-
-# 将项目根目录添加到sys.path
-project_root = str(Path(__file__).resolve().parent.parent)
-sys.path.append(project_root)
-
-# 现在可以导入utils模块了
-from utils.models import *
-
+## 客户端基类，实现客户端模型初始化和模型加载、更新、训练
 from torch.utils.data import DataLoader
-from utils.fed_utils import assign_dataset, init_model
+
+from utils.fed_utils import init_model
+from utils.models import *
+from preprocessing.fed_dataloader import DataSetInfo
 
 
 class FedClient(object):
-    def __init__(self, name, epoch, dataset_id, model_name):
+    def __init__(self, name, epoch, dataset_id, model_name, dataset_info:DataSetInfo):
         """
-        Initialize the client k for federated learning.
-        :param name: Name of the client k
-        :param epoch: Number of local training epochs in the client k
-        :param dataset_id: Local dataset in the client k
-        :param model_name: Local model in the client k
+          初始化联邦学习中的客户端 k。
+          :param name: 客户端 k 的名称
+          :param epoch: 客户端 k 本地训练的轮数
+          :param dataset_id: 客户端 k 的本地数据集
+          :param model_name: 客户端 k 的本地模型
         """
-        # Initialize the metadata in the local client
+        # 初始化本地客户端的元数据
         self.target_ip = '127.0.0.3'
         self.port = 9999
         self.name = name
 
-        # Initialize the parameters in the local client
+        # 初始化本地客户端的参数
         self._epoch = epoch
         self._batch_size = 50
         self._lr = 0.001
@@ -35,41 +29,43 @@ class FedClient(object):
         self.loss_rec = []
         self.n_data = 0
 
-        # Initialize the local training and testing dataset
+        # 初始化本地训练和测试数据集
         self.trainset = None
         self.test_data = None
 
-        # Initialize the local model
-        self._num_class, self._image_dim, self._image_channel = assign_dataset(dataset_id)
+        # 初始化本地模型
+        self._num_class, self._image_dim, self._image_channel = dataset_info.get()
         self.model_name = model_name
-        self.model = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
+        self.model = init_model(model_name=self.model_name, num_class=self._num_class,
+                                image_channel=self._image_channel)
         model_parameters = filter(lambda p: p.requires_grad, self.model.parameters())
         self.param_len = sum([np.prod(p.size()) for p in model_parameters])
 
-        # Training on GPU
+        # 在 GPU 上训练
         gpu = 0
         self._device = torch.device("cuda:{}".format(gpu) if torch.cuda.is_available() and gpu != -1 else "cpu")
 
     def load_trainset(self, trainset):
         """
-        Client loads the training dataset.
-        :param trainset: Dataset for training.
+        客户端加载训练数据集。
+        :param trainset: 用于训练的数据集。
         """
         self.trainset = trainset
         self.n_data = len(trainset)
 
     def update(self, model_state_dict):
         """
-        Client updates the model from the server.
-        :param model_state_dict: Global model.
+        客户端从服务器更新模型。
+        :param model_state_dict: 全局模型。
         """
-        self.model = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
+        self.model = init_model(model_name=self.model_name, num_class=self._num_class,
+                                image_channel=self._image_channel)
         self.model.load_state_dict(model_state_dict)
 
     def train(self):
         """
-        Client trains the model on local dataset
-        :return: Local updated model, number of local data points, training loss
+        客户端在本地数据集上训练模型
+        :return: 本地更新后的模型、本地数据点数量、训练损失
         """
         train_loader = DataLoader(self.trainset, batch_size=self._batch_size, shuffle=True)
 
@@ -78,12 +74,12 @@ class FedClient(object):
         # optimizer = torch.optim.Adam(self.model.parameters(), lr=self._lr, weight_decay=1e-4)
         loss_func = nn.CrossEntropyLoss()
 
-        # Training process
+        # 训练过程
         for epoch in range(self._epoch):
             for step, (x, y) in enumerate(train_loader):
                 with torch.no_grad():
-                    b_x = x.to(self._device)  # Tensor on GPU
-                    b_y = y.to(self._device)  # Tensor on GPU
+                    b_x = x.to(self._device)  # GPU 上的张量
+                    b_y = y.to(self._device)  # GPU 上的张量
 
                 with torch.enable_grad():
                     self.model.train()
