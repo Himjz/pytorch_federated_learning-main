@@ -1,10 +1,10 @@
 system:
-  num_client: 100
-  num_local_class: 2
-  dataset: "MNIST"
-  model: "LeNet"
+  num_client: 3
+  num_local_class: 3
+  dataset: "PlantDisease"
+  model: "CNN"
   i_seed: 235235
-  num_round: 2000
+  num_round: 20
   res_root: "results"
 
 client:
