@@ -1,21 +1,20 @@
-import copy
-
-from fed_baselines.server_base import FedServer
 from utils.fed_utils import init_model
+from fed_baselines.server_base import FedServer
+import copy
 
 
 class ScaffoldServer(FedServer):
     def __init__(self, client_list, dataset_id, model_name):
         super().__init__(client_list, dataset_id, model_name)
-        # 服务器控制变量
+        # server control variate
         self.scv = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
-        # 所有客户端控制变量的字典
+        # Dict of all client control variates
         self.client_ccv_state = {}
 
     def agg(self):
         """
-        服务器使用 SCAFFOLD 算法聚合来自连接客户端的归一化模型
-        :return: 聚合后更新的全局模型、平均损失值、本地数据点数量、服务器控制变量
+        Server aggregates normalized models from connected clients using SCAFFOLD
+        :return: Updated global model after aggregation, Averaged loss value, Number of the local data points, server control variate
         """
         client_num = len(self.selected_clients)
         if client_num == 0 or self.n_data == 0:
@@ -54,12 +53,12 @@ class ScaffoldServer(FedServer):
 
     def rec(self, name, state_dict, n_data, loss, ccv_state):
         """
-        服务器接收来自连接的客户端 k 的本地更新。
-        :param name: 客户端 k 的名称
-        :param state_dict: 来自客户端 k 的模型字典
-        :param n_data: 客户端 k 中的本地数据点数量
-        :param loss: 客户端 k 本地训练的损失值
-        :param ccv_state: 归一化系数
+        Server receives the local updates from the connected client k.
+        :param name: Name of client k
+        :param state_dict: Model dict from the client k
+        :param n_data: Number of local data points in the client k
+        :param loss: Loss of local training in the client k
+        :param ccv_state: Normalization coefficient
         """
         self.n_data = self.n_data + n_data
         self.client_state[name] = {}
@@ -72,9 +71,10 @@ class ScaffoldServer(FedServer):
         self.client_loss[name] = loss
         self.client_ccv_state[name].update(ccv_state)
 
+
     def flush(self):
         """
-        清除服务器中的客户端信息
+        Flushing the client information in the server
         """
         self.n_data = 0
         self.client_state = {}

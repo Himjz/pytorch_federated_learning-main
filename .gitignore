@@ -132,3 +132,4 @@ dmypy.json
 data/
 ref_model
 results/
+/run1.py

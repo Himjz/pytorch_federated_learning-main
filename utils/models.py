@@ -1,19 +1,20 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torchvision.models as models
+import numpy as np
 from collections import OrderedDict
 
-import numpy as np
-import torch.nn as nn
-import torchvision.models as models
-
 """
-我们提供了可能在 FedD3 实验中使用的模型，如下所示：
-    - 为 CIFAR-10 定制的 AlexNet 模型（AlexCifarNet），包含 1756426 个参数
-    - 为 MNIST 定制的 LeNet 模型，包含 61706 个参数
-    - 更多的 ResNet 模型
-    - 更多的 VGG 模型
+We provide the models, which might be used in the experiments on FedD3, as follows:
+    - AlexNet model customized for CIFAR-10 (AlexCifarNet) with 1756426 parameters
+    - LeNet model customized for MNIST with 61706 parameters
+    - Further ResNet models
+    - Further Vgg models
 """
 
 
-# 为 CIFAR-10 定制的 AlexNet 模型，包含 1756426 个参数
+# AlexNet model customized for CIFAR-10 with 1756426 parameters
 class AlexCifarNet(nn.Module):
     supported_dims = {32}
 
@@ -44,56 +45,36 @@ class AlexCifarNet(nn.Module):
         return out
 
 
-# 为 MNIST 定制的 LeNet 模型，包含 61706 个参数
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-
+# LeNet model customized for MNIST with 61706 parameters
 class LeNet(nn.Module):
-    supported_dims = {28}  # 导入农业数据集时将该参数改为300
+    supported_dims = {28}
 
-    def __init__(self, num_classes=10, in_channels=1, input_size=(28, 28)):  # 导入农业数据集时将input_size改为(300, 300)
+    def __init__(self, num_classes=10, in_channels=1):
         super(LeNet, self).__init__()
-        # 验证输入尺寸是否受支持
-        if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
-            raise ValueError(f"输入尺寸 {input_size} 不受支持，支持的尺寸为 {self.supported_dims}")
-        self.conv1 = nn.Conv2d(in_channels, 16, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        # 提前计算全连接层的输入维度
-        with torch.no_grad():
-            test_input = torch.randn(1, in_channels, *input_size)
-            test_output = F.leaky_relu(self.conv1(test_input), inplace=True)
-            test_output = self.pool(test_output)
-            test_output = F.leaky_relu(self.conv2(test_output), inplace=True)
-            test_output = self.pool(test_output)
-            test_output = F.leaky_relu(self.conv3(test_output), inplace=True)
-            test_output = self.pool(test_output)
-            test_output = test_output.view(test_output.size(0), -1)
-            flatten_size = test_output.size(1)
-        self.fc1 = nn.Linear(flatten_size, 256)
-        self.dropout = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, num_classes)
+        self.conv1 = nn.Conv2d(in_channels, 6, 5, padding=2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.pool2 = nn.AdaptiveAvgPool2d((5, 5))  # 放在 conv2 之后
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, num_classes)
 
     def forward(self, x):
-        out = F.leaky_relu(self.conv1(x), inplace=True)
-        out = self.pool(out)
-        out = F.leaky_relu(self.conv2(out), inplace=True)
-        out = self.pool(out)
-        out = F.leaky_relu(self.conv3(out), inplace=True)
-        out = self.pool(out)
-        out = out.view(out.size(0), -1)
-        out = F.leaky_relu(self.fc1(out), inplace=True)
-        out = self.dropout(out)
-        out = F.leaky_relu(self.fc2(out), inplace=True)
+        out = F.relu(self.conv1(x), inplace=True)  # 6 x 28 x 28
+        out = F.max_pool2d(out, 2)  # 6 x 14 x 14
+        out = F.relu(self.conv2(out), inplace=True)  # 16 x 7 x 7
+
+        out = self.pool2(out)
+
+        out = F.max_pool2d(out, 2)   # 16 x 5 x 5
+        out = out.view(out.size(0), -1)  # 16 x 5 x 5
+        out = F.relu(self.fc1(out), inplace=True)
+        out = F.relu(self.fc2(out), inplace=True)
         out = self.fc3(out)
+
         return out
 
 
-# 更多的 ResNet 模型
+# Further ResNet models
 def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
     if model_name == "ResNet18":
         model = models.resnet18(pretrained=True)
@@ -112,7 +93,7 @@ def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
     return model
 
 
-# 更多的 VGG 模型
+# Further Vgg models
 def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
     if model_name == "VGG11":
         model = models.vgg11(pretrained=False)
@@ -149,16 +130,16 @@ class CNN(nn.Module):
         self.fp_con1 = nn.Sequential(OrderedDict([
             ('con0', nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=3, padding=1)),
             ('relu0', nn.ReLU(inplace=True)),
-        ]))
+            ]))
 
         self.ternary_con2 = nn.Sequential(OrderedDict([
-            # 卷积层模块 1
+            # Conv Layer block 1
             ('conv1', nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1, bias=False)),
             ('norm1', nn.BatchNorm2d(64)),
             ('relu1', nn.ReLU(inplace=True)),
             ('pool1', nn.MaxPool2d(kernel_size=2, stride=2)),
 
-            # 卷积层模块 2
+            # Conv Layer block 2
             ('conv2', nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1, bias=False)),
             ('norm2', nn.BatchNorm2d(128)),
             ('relu2', nn.ReLU(inplace=True)),
@@ -168,7 +149,7 @@ class CNN(nn.Module):
             ('pool2', nn.MaxPool2d(kernel_size=2, stride=2)),
             # nn.Dropout2d(p=0.05),
 
-            # 卷积层模块 3
+            # Conv Layer block 3
             ('conv3', nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1, bias=False)),
             ('norm3', nn.BatchNorm2d(256)),
             ('relu3', nn.ReLU(inplace=True)),
@@ -178,11 +159,14 @@ class CNN(nn.Module):
             ('pool4', nn.MaxPool2d(kernel_size=2, stride=2)),
         ]))
 
-        self.fp_fc = nn.Linear(4096, num_classes, bias=False)
+        self.pool = nn.AdaptiveAvgPool2d((4, 4))  # 输出 4×4 特征图
+
+        self.fp_fc = nn.Linear(256 * 4 * 4, num_classes, bias=False)
 
     def forward(self, x):
         x = self.fp_con1(x)
         x = self.ternary_con2(x)
+        x = self.pool(x)
         x = x.view(x.size(0), -1)
         x = self.fp_fc(x)
         output = F.log_softmax(x, dim=1)
@@ -196,3 +180,4 @@ if __name__ == "__main__":
         model_parameters = filter(lambda p: p.requires_grad, model.parameters())
         param_len = sum([np.prod(p.size()) for p in model_parameters])
         print('Number of model parameters of %s :' % model_name, ' %d ' % param_len)
+
