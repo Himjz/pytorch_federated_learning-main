@@ -28,10 +28,10 @@ If you find this repository useful, please let me know with your stars:star:. Th
 
 ### Dependencies
 
-- Python (3.13.2)
-- PyTorch (2.7.0)
+- Python (3.13.3)
+- PyTorch (2.7.1)
 - OpenCV (4.11)
-- numpy (2.2.5)
+- numpy (2.3.1)
 
 ### Install requirements
 
