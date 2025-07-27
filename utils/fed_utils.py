@@ -47,8 +47,8 @@ def assign_dataset(dataset_name):
         image_channel = 3
 
     elif dataset_name == 'PlantDisease':
-        num_class = 3
-        image_dim = 64  # 你 resize 成多大就写多大
+        num_class = 4
+        image_dim = 300  # 你 resize 成多大就写多大
         image_channel = 3  # RGB
 
     elif dataset_name == 'IMAGENET':

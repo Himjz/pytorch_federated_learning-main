@@ -45,6 +45,7 @@ def divide_data(num_client=1, num_local_class=10, dataset_name='SelfDataSet', i_
     num_classes = len_classes
     if num_local_class == -1:
         num_local_class = num_classes
+
     assert 0 < num_local_class <= num_classes, "number of local class should smaller than global number of class"
 
     trainset_config = {'users': [],

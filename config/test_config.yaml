@@ -1,6 +1,6 @@
 system:
-  num_client: 3
-  num_local_class: 3
+  num_client: 10
+  num_local_class: 4
   dataset: "PlantDisease"
   model: "CNN"
   i_seed: 235235
@@ -8,7 +8,7 @@ system:
   res_root: "results"
 
 client:
-  fed_algo: "FedDp"
+  fed_algo: "FedAvg"
   lr: 0.01
   batch_size: 64
   num_local_epoch: 3

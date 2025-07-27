@@ -101,7 +101,7 @@ def load_data(name, root='./data', download=True, save_pre_data=True):
     return trainset, testset, len_classes
 
 
-def divide_data(num_client=3, num_local_class=3, dataset_name='PlantDisease', i_seed=0):
+def divide_data(num_client=4, num_local_class=4, dataset_name='PlantDisease', i_seed=0):
 
     torch.manual_seed(i_seed)
 
@@ -117,15 +117,16 @@ def divide_data(num_client=3, num_local_class=3, dataset_name='PlantDisease', i_
         transforms.ToTensor()
     ])
 
-    trainset = ImageFolder(root=r'C:\Users\陈基赫\Desktop\pytorch_federated_learning-main\dt\train',
+    trainset = ImageFolder(root=r'D:\pytorch_federated_learning-main\dt\train',
                            transform=transform)
-    testset = ImageFolder(root=r'C:\Users\陈基赫\Desktop\pytorch_federated_learning-main\dt\val', transform=transform)
+    testset = ImageFolder(root=r'D:\pytorch_federated_learning-main\dt\val', transform=transform)
     len_classes = len(trainset.classes)  # 自动识别类别数
     trainset.targets = torch.tensor(trainset.targets)
 
     num_classes = len_classes
     if num_local_class == -1:
         num_local_class = num_classes
+
     assert 0 < num_local_class <= num_classes, "number of local class should smaller than global number of class"
 
     trainset_config = {'users': [],
