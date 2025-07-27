@@ -92,7 +92,8 @@ def fed_run():
                                                  num_local_class=config["system"]["num_local_class"],
                                                  dataset_name=config["system"]["dataset"],
                                                  i_seed=config["system"]["i_seed"],
-                                                 print_report=True)
+                                                 print_report=True,
+                                                 untrusted_strategies=None)
     max_acc = 0
     # 根据联邦学习算法和特定的联邦设置初始化客户端
     for client_id in trainset_config['users']:
