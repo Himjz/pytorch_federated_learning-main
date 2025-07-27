@@ -1,19 +1,21 @@
-from fed_baselines.server_base import FedServer
 import copy
+
+from fed_baselines.server_base import FedServer
+from preprocessing.fed_dataloader import DataSetInfo
 
 
 class FedNovaServer(FedServer):
-    def __init__(self, client_list, dataset_id, model_name):
-        super().__init__(client_list, dataset_id, model_name)
-        # Normalized coefficient
+    def __init__(self, client_list, dataset_id, model_name, dataset_info: DataSetInfo):
+        super().__init__(client_list, dataset_id, model_name, dataset_info)
+        # 归一化系数
         self.client_coeff = {}
-        # Normalized gradients
+        # 归一化梯度
         self.client_norm_grad = {}
 
     def agg(self):
         """
-        Server aggregates normalized models from connected clients using FedNova
-        :return: Updated global model after aggregation, Averaged loss value, Number of the local data points
+        服务器使用 FedNova 算法聚合来自连接客户端的归一化模型
+        :return: 聚合后更新的全局模型、平均损失值、本地数据点的数量
         """
         client_num = len(self.selected_clients)
         if client_num == 0 or self.n_data == 0:
@@ -26,15 +28,21 @@ class FedNovaServer(FedServer):
         avg_loss = 0
         coeff = 0.0
         for i, name in enumerate(self.selected_clients):
+            # 累加归一化系数
             coeff = coeff + self.client_coeff[name] * self.client_n_data[name] / self.n_data
             for key in self.client_state[name]:
                 if i == 0:
+                    # 初始化聚合的归一化梯度
                     nova_model_state[key] = self.client_norm_grad[name][key] * self.client_n_data[name] / self.n_data
                 else:
-                    nova_model_state[key] = nova_model_state[key] + self.client_norm_grad[name][key] * self.client_n_data[name] / self.n_data
+                    # 累加归一化梯度
+                    nova_model_state[key] = nova_model_state[key] + self.client_norm_grad[name][key] * \
+                                            self.client_n_data[name] / self.n_data
+            # 累加平均损失
             avg_loss = avg_loss + self.client_loss[name] * self.client_n_data[name] / self.n_data
 
         for key in model_state:
+            # 根据 FedNova 算法更新全局模型
             model_state[key] -= coeff * nova_model_state[key]
 
         self.model.load_state_dict(model_state)
@@ -45,13 +53,13 @@ class FedNovaServer(FedServer):
 
     def rec(self, name, state_dict, n_data, loss, coeff, norm_grad):
         """
-        Server receives the local updates from the connected client k.
-        :param name: Name of client k
-        :param state_dict: Model dict from the client k
-        :param n_data: Number of local data points in the client k
-        :param loss: Loss of local training in the client k
-        :param coeff: Normalization coefficient
-        :param norm_grad: Normalized gradients
+        服务器接收来自连接客户端 k 的本地更新。
+        :param name: 客户端 k 的名称
+        :param state_dict: 来自客户端 k 的模型字典
+        :param n_data: 客户端 k 中本地数据点的数量
+        :param loss: 客户端 k 中本地训练的损失
+        :param coeff: 归一化系数
+        :param norm_grad: 归一化梯度
         """
         self.n_data = self.n_data + n_data
         self.client_state[name] = {}
@@ -66,10 +74,9 @@ class FedNovaServer(FedServer):
         self.client_coeff[name] = coeff
         self.client_norm_grad[name].update(norm_grad)
 
-
     def flush(self):
         """
-        Flushing the client information in the server
+        清空服务器中的客户端信息
         """
         self.n_data = 0
         self.client_state = {}

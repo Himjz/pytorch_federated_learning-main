@@ -4,12 +4,12 @@ import torch.nn.functional as F
 from sklearn.metrics import recall_score, f1_score, precision_score
 from torch.utils.data import DataLoader
 
-from utils.fed_utils import init_model
 from preprocessing.fed_dataloader import DataSetInfo
+from utils.fed_utils import init_model
 
 
 class FedServer(object):
-    def __init__(self, client_list, dataset_id, model_name, dataset_info:DataSetInfo):
+    def __init__(self, client_list, dataset_id, model_name, dataset_info: DataSetInfo):
         """
         初始化联邦学习的服务器。
         :param client_list: 网络中连接的客户端列表
