@@ -4,16 +4,18 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from fed_baselines.client_base import FedClient
+from preprocessing.fed_dataloader import DataSetInfo
 
 
 class FedDPClient(FedClient):
-    def __init__(self, name, epoch, dataset_id, model_name, epsilon=1.0, alpha=0.1, delta=1e-5):
-        super().__init__(name, epoch, dataset_id, model_name)
+    def __init__(self, name, epoch, dataset_id, model_name, dataset_info: DataSetInfo, epsilon=1.0, alpha=0.1,
+                 delta=1e-5):
+        super().__init__(name, epoch, dataset_id, model_name, dataset_info)
         # 差分隐私参数
-        self.epsilon = epsilon          # 初始隐私预算
-        self.alpha = alpha              # 隐私预算动态调整参数
-        self.delta = delta              # 松弛项
-        self.sensitivity = 1.0          # 敏感度（需根据具体任务调整）
+        self.epsilon = epsilon  # 初始隐私预算
+        self.alpha = alpha  # 隐私预算动态调整参数
+        self.delta = delta  # 松弛项
+        self.sensitivity = 1.0  # 敏感度（需根据具体任务调整）
 
     def _compute_noise_scale(self):
         """计算高斯噪声的标准差σ"""

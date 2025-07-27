@@ -1,10 +1,12 @@
+import sys
+from pathlib import Path
+
 import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-import sys
 
-from pathlib import Path
+from preprocessing.fed_dataloader import DataSetInfo
 
 # 解决模块导入路径问题
 project_root = str(Path(__file__).resolve().parent.parent)
@@ -12,28 +14,29 @@ sys.path.append(project_root)
 
 from fed_baselines.client_base import FedClient
 
+
 class FedDPClient(FedClient):
-    def __init__(self, name, epoch, dataset_id, model_name,
+    def __init__(self, name, epoch, dataset_id, model_name, dataset_info: DataSetInfo,
                  # 差分隐私参数
                  dp_epsilon=1.0, dp_alpha=0.1, delta=1e-5, sensitivity=1.0,
                  # 对抗训练参数
                  adv_epsilon=0.1, alpha0=0.01, lambda_decay=0.001,
                  adv_sigma=0.01, switch_round=10):
-        super().__init__(name, epoch, dataset_id, model_name)
+        super().__init__(name, epoch, dataset_id, model_name, dataset_info)
         # 差分隐私核心参数
         self.dp_epsilon = dp_epsilon  # 隐私预算ε（重命名避免冲突）
-        self.dp_alpha = dp_alpha      # 预算调整系数
-        self.delta = delta            # 松弛项δ
+        self.dp_alpha = dp_alpha  # 预算调整系数
+        self.delta = delta  # 松弛项δ
         self.sensitivity = sensitivity  # 敏感度△f
         # 对抗训练参数
         self.adv_epsilon = adv_epsilon  # 对抗扰动基础强度
-        self.alpha0 = alpha0            # 初始步长（PGD/FGSM中的α）
+        self.alpha0 = alpha0  # 初始步长（PGD/FGSM中的α）
         self.lambda_decay = lambda_decay  # 步长衰减率
-        self.adv_sigma = adv_sigma      # 对抗样本中的高斯噪声标准差
+        self.adv_sigma = adv_sigma  # 对抗样本中的高斯噪声标准差
         self.switch_round = switch_round  # 切换对抗方法的轮次阈值
         # 训练状态跟踪
-        self.current_round = 0          # 全局训练轮次
-        self.epoch_count = 0            # 累计训练 epoch 数
+        self.current_round = 0  # 全局训练轮次
+        self.epoch_count = 0  # 累计训练 epoch 数
 
     def _compute_dp_noise_scale(self):
         """计算差分隐私噪声的标准差（原梯度噪声）"""
