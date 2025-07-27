@@ -342,13 +342,13 @@ if __name__ == "__main__":
     trainset_config, testset, dataset_info = divide_data(
         num_client=5,
         num_local_class=2,
-        dataset_name='MNIST',
+        dataset_name='dt',
         i_seed=0,
-        untrusted_strategies=[2.1, 3.5, 4.3, 0.5, 1.0],
+        untrusted_strategies=[2.1, 3.5, 4.3, 2.5, 1.0],
         device=device,
         preload_to_gpu=False,
         in_channels=1,
-        image_size=32  # 指定图像尺寸
+
     )
 
     print("\n数据集信息:")

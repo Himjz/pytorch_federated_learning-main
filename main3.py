@@ -65,9 +65,6 @@ def fed_run():
     algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova", 'FedDp']
     assert config["client"]["fed_algo"] in algo_list, "The federated learning algorithm is not supported"
 
-    dataset_list = ['MNIST', 'CIFAR10', 'FashionMNIST', 'SVHN', 'CIFAR100','PlantDisease']
-    assert config["system"]["dataset"] in dataset_list, "The dataset is not supported"
-
     model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN"]
     assert config["system"]["model"] in model_list, "The model is not supported"
 
@@ -90,11 +87,12 @@ def fed_run():
         'loss': []
     }
 
-    trainset_config, testset, info = divide_data(root='../data',
+    trainset_config, testset, info = divide_data(root='./data',
                                                  num_client=config["system"]["num_client"],
                                                  num_local_class=config["system"]["num_local_class"],
                                                  dataset_name=config["system"]["dataset"],
-                                                 i_seed=config["system"]["i_seed"])
+                                                 i_seed=config["system"]["i_seed"],
+                                                 print_report=True)
     max_acc = 0
     # 根据联邦学习算法和特定的联邦设置初始化客户端
     for client_id in trainset_config['users']:
