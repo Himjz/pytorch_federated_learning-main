@@ -3,6 +3,8 @@ from collections import OrderedDict
 import numpy as np
 import torch.nn as nn
 import torchvision.models as models
+from torchvision.models import ResNet34_Weights, ResNet50_Weights, ResNet101_Weights, ResNet152_Weights, \
+    ResNet18_Weights
 
 """
 我们提供了可能在 FedD3 实验中使用的模型，如下所示：
@@ -96,15 +98,17 @@ class LeNet(nn.Module):
 # 更多的 ResNet 模型
 def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
     if model_name == "ResNet18":
-        model = models.resnet18(pretrained=True)
+        model = models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
     elif model_name == "ResNet34":
-        model = models.resnet34(pretrained=True)
+        model = models.resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
     elif model_name == "ResNet50":
-        model = models.resnet50(pretrained=True)
+        model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
     elif model_name == "ResNet101":
-        model = models.resnet101(pretrained=True)
+        model = models.resnet101(weights=ResNet101_Weights.IMAGENET1K_V1)
     elif model_name == "ResNet152":
-        model = models.resnet152(pretrained=True)
+        model = models.resnet152(weights=ResNet152_Weights.IMAGENET1K_V1)
+    else:
+        raise ValueError(f"不支持的 ResNet 模型: {model_name}")
     model.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
     fc_features = model.fc.in_features
     model.fc = nn.Linear(fc_features, num_classes)
