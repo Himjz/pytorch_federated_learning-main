@@ -9,6 +9,7 @@ from preprocessing.utils import *
 
 class EfficientDataset(Dataset):
     """高效数据集类：支持GPU加速和多种不可信策略"""
+
     def __init__(self, base_images, base_labels, indices, custom_labels=None, device=None):
         self.base_images = base_images
         self.base_labels = base_labels
@@ -50,6 +51,7 @@ class EfficientDataset(Dataset):
 
 class DataSetInfo:
     """数据集信息类，用于存储数据集的元信息"""
+
     def __init__(self, num_classes, image_dim, image_channel):
         self.num_classes = num_classes
         self.image_dim = image_dim
@@ -120,7 +122,8 @@ def load_data(name, root='./data', download=True, device=None, preload_to_gpu=Fa
         base_images = [trainset[i][0].to(device) for i in range(len(trainset))] if preload_to_gpu else [
             trainset[i][0] for i in range(len(trainset))]
 
-        return base_images, base_labels, num_classes, testset, DataSetInfo(num_classes, image_size, in_channels or default_channels)
+        return base_images, base_labels, num_classes, testset, DataSetInfo(num_classes, image_size,
+                                                                           in_channels or default_channels)
 
     # 处理自定义数据集
     else:
@@ -175,6 +178,7 @@ def create_transform(image_size, in_channels):
 
 
 def divide_data(
+        root="../data",
         num_client=1,
         num_local_class=10,
         dataset_name='MNIST',
@@ -194,6 +198,7 @@ def divide_data(
 
     # 加载数据
     base_images, base_labels, num_classes, testset, dataset_info = load_data(
+        root=root,
         name=dataset_name,
         device=device,
         preload_to_gpu=preload_to_gpu,
@@ -325,8 +330,8 @@ def verify_loader(client_data, client_id, device):
     if ds.noisy_mask.any():
         print(f"  批量中含特征噪声的样本索引: {[idx for idx in range(batch_size) if ds.noisy_mask[idx].item()]}")
     print("  ✅ 验证通过" if (
-                batch_labels.tolist() == [ds.custom_labels.get(idx, ds.base_labels[ds.indices[idx]]) for idx in
-                                          range(batch_size)]) else "  ❌ 验证失败")
+            batch_labels.tolist() == [ds.custom_labels.get(idx, ds.base_labels[ds.indices[idx]]) for idx in
+                                      range(batch_size)]) else "  ❌ 验证失败")
 
 
 if __name__ == "__main__":
