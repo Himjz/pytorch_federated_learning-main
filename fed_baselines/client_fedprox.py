@@ -4,12 +4,13 @@ import copy
 from torch.utils.data import DataLoader
 
 from fed_baselines.client_base import FedClient
+from preprocessing.fed_dataloader import DataSetInfo
 from utils.models import *
 
 
 class FedProxClient(FedClient):
-    def __init__(self, name, epoch, dataset_id, model_name):
-        super().__init__(name, epoch, dataset_id, model_name)
+    def __init__(self, name, epoch, dataset_id, model_name, dataset_info: DataSetInfo):
+        super().__init__(name, epoch, dataset_id, model_name, dataset_info)
         self.mu = 0.1
 
     def train(self):

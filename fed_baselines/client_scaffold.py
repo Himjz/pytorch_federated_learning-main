@@ -3,13 +3,14 @@ import copy
 from torch.utils.data import DataLoader
 
 from fed_baselines.client_base import FedClient
+from preprocessing.fed_dataloader import DataSetInfo
 from utils.fed_utils import init_model
 from utils.models import *
 
 
 class ScaffoldClient(FedClient):
-    def __init__(self, name, epoch, dataset_id, model_name):
-        super().__init__(name, epoch, dataset_id, model_name)
+    def __init__(self, name, epoch, dataset_id, model_name, dataset_info: DataSetInfo):
+        super().__init__(name, epoch, dataset_id, model_name, dataset_info)
         # 服务器控制变量
         self.scv = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
         # 客户端控制变量
@@ -103,7 +104,7 @@ class ScaffoldClient(FedClient):
         state_dict = self.model.state_dict()
         for key in state_dict:
             new_ccv_state[key] = ccv_state[key] - scv_state[key] + (global_state_dict[key] - state_dict[key]) / (
-                        cnt * self._lr)
+                    cnt * self._lr)
             delta_ccv_state[key] = new_ccv_state[key] - ccv_state[key]
             delta_model_state[key] = state_dict[key] - global_state_dict[key]
 

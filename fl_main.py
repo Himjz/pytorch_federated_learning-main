@@ -79,9 +79,9 @@ def fed_run():
     }
 
     trainset_config, testset, info = divide_data(num_client=config["system"]["num_client"],
-                                           num_local_class=config["system"]["num_local_class"],
-                                           dataset_name=config["system"]["dataset"],
-                                           i_seed=config["system"]["i_seed"])
+                                                 num_local_class=config["system"]["num_local_class"],
+                                                 dataset_name=config["system"]["dataset"],
+                                                 i_seed=config["system"]["i_seed"])
     max_acc = 0
 
     # 初始化客户端
@@ -89,35 +89,43 @@ def fed_run():
         if config["client"]["fed_algo"] == 'FedAvg':
             client_dict[client_id] = FedClient(client_id, dataset_id=config["system"]["dataset"],
                                                epoch=config["client"]["num_local_epoch"],
-                                               model_name=config["system"]["model"])
+                                               model_name=config["system"]["model"],
+                                               dataset_info=info)
         elif config["client"]["fed_algo"] == 'SCAFFOLD':
             client_dict[client_id] = ScaffoldClient(client_id, dataset_id=config["system"]["dataset"],
                                                     epoch=config["client"]["num_local_epoch"],
-                                                    model_name=config["system"]["model"])
+                                                    model_name=config["system"]["model"],
+                                                    dataset_info=info)
         elif config["client"]["fed_algo"] == 'FedProx':
             client_dict[client_id] = FedProxClient(client_id, dataset_id=config["system"]["dataset"],
                                                    epoch=config["client"]["num_local_epoch"],
-                                                   model_name=config["system"]["model"])
+                                                   model_name=config["system"]["model"],
+                                                   dataset_info=info)
         elif config["client"]["fed_algo"] == 'FedNova':
             client_dict[client_id] = FedNovaClient(client_id, dataset_id=config["system"]["dataset"],
                                                    epoch=config["client"]["num_local_epoch"],
-                                                   model_name=config["system"]["model"])
+                                                   model_name=config["system"]["model"],
+                                                   dataset_info=info)
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # 初始化服务器
     if config["client"]["fed_algo"] == 'FedAvg':
         fed_server = FedServer(trainset_config['users'], dataset_id=config["system"]["dataset"],
-                               model_name=config["system"]["model"])
+                               model_name=config["system"]["model"],
+                               dataset_info=info)
     elif config["client"]["fed_algo"] == 'SCAFFOLD':
         fed_server = ScaffoldServer(trainset_config['users'], dataset_id=config["system"]["dataset"],
-                                    model_name=config["system"]["model"])
+                                    model_name=config["system"]["model"],
+                                    dataset_info=info)
         scv_state = fed_server.scv.state_dict()
     elif config["client"]["fed_algo"] == 'FedProx':
         fed_server = FedServer(trainset_config['users'], dataset_id=config["system"]["dataset"],
-                               model_name=config["system"]["model"])
+                               model_name=config["system"]["model"],
+                               dataset_info=info)
     elif config["client"]["fed_algo"] == 'FedNova':
         fed_server = FedNovaServer(trainset_config['users'], dataset_id=config["system"]["dataset"],
-                                   model_name=config["system"]["model"])
+                                   model_name=config["system"]["model"],
+                                   dataset_info=info)
     fed_server.load_testset(testset)
     global_state_dict = fed_server.state_dict()
 
