@@ -4,7 +4,7 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
 
-from utils import *
+from preprocessing.utils import *
 
 
 class EfficientDataset(Dataset):
