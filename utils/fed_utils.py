@@ -1,72 +1,12 @@
 from utils.models import *
 
-
-def assign_dataset(dataset_name):
-    """
-    Assign the parameters to a dataset
-    :param dataset_name: Dataset name
-    :return: num_class: Number of classes in the dataset
-    :return: image_dim: Image dimensions
-    :return: image_channel: Number of image channels
-    """
-    num_class = -1
-    image_dim = -1
-    image_channel = -1
-
-    if dataset_name == 'MNIST':
-        num_class = 10
-        image_dim = 28
-        image_channel = 1
-
-    elif dataset_name == 'FashionMNIST':
-        num_class = 10
-        image_dim = 28
-        image_channel = 1
-
-    elif dataset_name == 'EMNIST':
-        num_class = 27
-        image_dim = 28
-        image_channel = 1
-
-    elif dataset_name == 'CIFAR10':
-
-        num_class = 10
-        image_dim = 32
-        image_channel = 3
-
-    elif dataset_name == 'CIFAR100':
-
-        num_class = 100
-        image_dim = 32
-        image_channel = 3
-
-    elif dataset_name == 'SVHN':
-
-        num_class = 10
-        image_dim = 32
-        image_channel = 3
-
-    elif dataset_name == 'PlantDisease':
-        num_class = 4
-        image_dim = 300  # 你 resize 成多大就写多大
-        image_channel = 3  # RGB
-
-    elif dataset_name == 'IMAGENET':
-
-        num_class = 200
-        image_dim = 64
-        image_channel = 3
-
-    return num_class, image_dim, image_channel
-
-
 def init_model(model_name, num_class, image_channel):
     """
-    Initialize the model for a specific learning task.
-    :param model_name: Model name
-    :param num_class: Number of classes in the dataset
-    :param image_channel: Number of image channels
-    :return: The initialized model
+    为特定的学习任务初始化模型。
+    :param model_name: 模型名称
+    :param num_class: 数据集中的类别数量
+    :param image_channel: 图像通道数
+    :return: 初始化后的模型
     """
     model = None
     if model_name == "ResNet18":
