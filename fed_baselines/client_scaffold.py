@@ -9,8 +9,8 @@ from utils.models import *
 
 
 class ScaffoldClient(FedClient):
-    def __init__(self, name, epoch, dataset_id, model_name, dataset_info: DataSetInfo):
-        super().__init__(name, epoch, dataset_id, model_name, dataset_info)
+    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo):
+        super().__init__(name, epoch, model_name, dataset_info)
         # 服务器控制变量
         self.scv = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
         # 客户端控制变量

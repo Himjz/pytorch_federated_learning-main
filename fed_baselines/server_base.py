@@ -9,11 +9,10 @@ from utils.fed_utils import init_model
 
 
 class FedServer(object):
-    def __init__(self, client_list, dataset_id, model_name, dataset_info: DataSetInfo):
+    def __init__(self, client_list, model_name, dataset_info: DataSetInfo):
         """
         初始化联邦学习的服务器。
         :param client_list: 网络中连接的客户端列表
-        :param dataset_id: 应用场景的数据集名称
         :param model_name: 应用场景的机器学习模型名称
         """
         # 初始化系统设置所需的字典和列表
@@ -38,8 +37,6 @@ class FedServer(object):
         self.round = 0
         # 记录本地数据点的总数
         self.n_data = 0
-        # 记录应用场景的数据集名称
-        self._dataset_id = dataset_id
 
         # 在 GPU 上进行测试
         # 指定使用的 GPU 编号

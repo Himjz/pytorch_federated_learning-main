@@ -5,8 +5,8 @@ from preprocessing.fed_dataloader import DataSetInfo
 
 
 class FedNovaServer(FedServer):
-    def __init__(self, client_list, dataset_id, model_name, dataset_info: DataSetInfo):
-        super().__init__(client_list, dataset_id, model_name, dataset_info)
+    def __init__(self, client_list, model_name, dataset_info: DataSetInfo):
+        super().__init__(client_list, model_name, dataset_info)
         # 归一化系数
         self.client_coeff = {}
         # 归一化梯度

@@ -7,12 +7,11 @@ from utils.models import *
 
 
 class FedClient(object):
-    def __init__(self, name, epoch, dataset_id, model_name, dataset_info: DataSetInfo):
+    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo):
         """
           初始化联邦学习中的客户端 k。
           :param name: 客户端 k 的名称
           :param epoch: 客户端 k 本地训练的轮数
-          :param dataset_id: 客户端 k 的本地数据集
           :param model_name: 客户端 k 的本地模型
         """
         # 初始化本地客户端的元数据
