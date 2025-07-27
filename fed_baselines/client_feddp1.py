@@ -6,6 +6,8 @@ import sys
 
 from pathlib import Path
 
+from preprocessing.fed_dataloader import DataSetInfo
+
 # 解决模块导入路径问题
 project_root = str(Path(__file__).resolve().parent.parent)
 sys.path.append(project_root)
@@ -13,13 +15,13 @@ sys.path.append(project_root)
 from fed_baselines.client_base import FedClient
 
 class FedDPClient(FedClient):
-    def __init__(self, name, epoch, dataset_id, model_name,
+    def __init__(self, name, epoch, dataset_id, model_name, dataset_info:DataSetInfo,
                  # 差分隐私参数
                  dp_epsilon=1.0, dp_alpha=0.1, delta=1e-5, sensitivity=1.0,
                  # 对抗训练参数
                  adv_epsilon=0.1, alpha0=0.01, lambda_decay=0.001,
                  adv_sigma=0.01, switch_round=10):
-        super().__init__(name, epoch, dataset_id, model_name)
+        super().__init__(name, epoch, model_name,dataset_info)
         # 差分隐私核心参数
         self.dp_epsilon = dp_epsilon  # 隐私预算ε（重命名避免冲突）
         self.dp_alpha = dp_alpha      # 预算调整系数
