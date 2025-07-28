@@ -134,11 +134,13 @@ def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
         model = models.vgg11(pretrained=False)
     elif model_name == "VGG19_bn":
         model = models.vgg11_bn(pretrained=True)
+    else:
+        raise ValueError(f"不支持的 VGG 模型: {model_name}")
 
-    # first_conv_layer = [nn.Conv2d(1, 3, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True)]
-    # first_conv_layer.extend(list(model.features))
-    # model.features = nn.Sequential(*first_conv_layer)
-    # model.conv1 = nn.Conv2d(num_classes, 64, 7, stride=2, padding=3, bias=False)
+    first_conv_layer = [nn.Conv2d(in_channels, 3, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True)]
+    first_conv_layer.extend(list(model.features))
+    model.features = nn.Sequential(*first_conv_layer)
+    model.conv1 = nn.Conv2d(num_classes, 64, 7, stride=2, padding=3, bias=False)
 
     fc_features = model.classifier[6].in_features
     model.classifier[6] = nn.Linear(fc_features, num_classes)
