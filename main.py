@@ -71,7 +71,7 @@ def fed_run():
     # 新增：记录成员推理攻击准确率
     membership_attack_accuracies = []
 
-    trainset_config, testset, info = divide_data(root='../data',
+    trainset_config, testset, info = divide_data(root='./data',
                                                  num_client=config["system"]["num_client"],
                                                  num_local_class=config["system"]["num_local_class"],
                                                  dataset_name=config["system"]["dataset"],
@@ -96,9 +96,12 @@ def fed_run():
                                                    model_name=config["system"]["model"],
                                                    dataset_info=info)
         elif config["client"]["fed_algo"] == 'FedDp':
-            client_dict[client_id] = FedDPClient(client_id, epoch=config["client"]["num_local_epoch"],
+            client_dict[client_id] = FedDPClient(client_id, dataset_id=config["system"]["dataset"],
+                                                 epoch=config["client"]["num_local_epoch"],
                                                  model_name=config["system"]["model"],
-                                                 dataset_info=info)
+                                                 dataset_info=info,
+                                                 testset=testset)
+
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # 初始化服务器

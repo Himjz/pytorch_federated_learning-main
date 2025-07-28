@@ -8,7 +8,7 @@ from preprocessing.fed_dataloader import DataSetInfo
 
 
 class FedDPClient(FedClient):
-    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo,
+    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo, testset=None,
                  # 差分隐私参数
                  dp_epsilon=1.0, dp_alpha=0.1, delta=1e-5, sensitivity=1.0,
                  # 对抗训练参数
@@ -17,6 +17,7 @@ class FedDPClient(FedClient):
                  # 新增参数：是否使用对抗训练
                  use_adv_training=True):
         super().__init__(name, epoch, model_name, dataset_info)
+        self.testset = testset  # 添加 testset 属性
         # 差分隐私核心参数
         self.dp_epsilon = dp_epsilon  # 隐私预算ε（重命名避免冲突）
         self.dp_alpha = dp_alpha      # 预算调整系数
@@ -33,10 +34,6 @@ class FedDPClient(FedClient):
         self.epoch_count = 0            # 累计训练 epoch 数
         # 新增属性：是否使用对抗训练
         self.use_adv_training = use_adv_training
-
-    def load_testset(self, testset):
-        """客户端加载测试数据集。"""
-        self.testset = testset
 
     def _compute_dp_noise_scale(self):
         """计算差分隐私噪声的标准差（原梯度噪声）"""
