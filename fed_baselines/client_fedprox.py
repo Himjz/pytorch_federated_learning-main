@@ -9,8 +9,8 @@ from utils.models import *
 
 
 class FedProxClient(FedClient):
-    def __init__(self, name, epoch, dataset_id, model_name, dataset_info: DataSetInfo):
-        super().__init__(name, epoch, dataset_id, model_name, dataset_info)
+    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo):
+        super().__init__(name, epoch, model_name, dataset_info)
         self.mu = 0.1
 
     def train(self):
