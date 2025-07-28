@@ -10,7 +10,7 @@ from preprocessing.fed_dataloader import DataSetInfo
 class FedDPClient(FedClient):
     def __init__(self, name, epoch, dataset_id, model_name, dataset_info: DataSetInfo, epsilon=1.0, alpha=0.1,
                  delta=1e-5):
-        super().__init__(name, epoch, dataset_id, model_name, dataset_info)
+        super().__init__(name, epoch, model_name, dataset_info)
         # 差分隐私参数
         self.epsilon = epsilon  # 初始隐私预算
         self.alpha = alpha  # 隐私预算动态调整参数
