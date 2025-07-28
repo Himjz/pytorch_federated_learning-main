@@ -177,27 +177,32 @@ class FedDPClient(FedClient):
         attack_data = []
         attack_labels = []
 
-        # 训练集中的样本标签为 1
-        for x, y in attack_in_train:
-            # 确保 x 是张量
-            if not isinstance(x, torch.Tensor):
-                x = torch.tensor(x, dtype=torch.float32)
-            x = x.to(self._device).unsqueeze(0)
-            output = self.model(x)
-            confidence = torch.nn.functional.softmax(output, dim=1).max().item()
-            attack_data.append(confidence)
-            attack_labels.append(1)
+        # 将模型设置为评估模式
+        self.model.eval()
+        with torch.no_grad():
+            # 训练集中的样本标签为 1
+            for x, y in attack_in_train:
+                # 确保 x 是张量
+                if not isinstance(x, torch.Tensor):
+                    x = torch.tensor(x, dtype=torch.float32)
+                x = x.to(self._device).unsqueeze(0)
+                output = self.model(x)
+                confidence = torch.nn.functional.softmax(output, dim=1).max().item()
+                attack_data.append(confidence)
+                attack_labels.append(1)
 
-        # 测试集中的样本标签为 0
-        for x, y in attack_out_train:
-            # 确保 x 是张量
-            if not isinstance(x, torch.Tensor):
-                x = torch.tensor(x, dtype=torch.float32)
-            x = x.to(self._device).unsqueeze(0)
-            output = self.model(x)
-            confidence = torch.nn.functional.softmax(output, dim=1).max().item()
-            attack_data.append(confidence)
-            attack_labels.append(0)
+            # 测试集中的样本标签为 0
+            for x, y in attack_out_train:
+                # 确保 x 是张量
+                if not isinstance(x, torch.Tensor):
+                    x = torch.tensor(x, dtype=torch.float32)
+                x = x.to(self._device).unsqueeze(0)
+                output = self.model(x)
+                confidence = torch.nn.functional.softmax(output, dim=1).max().item()
+                attack_data.append(confidence)
+                attack_labels.append(0)
+        # 恢复训练模式
+        self.model.train()
 
         # 简单阈值判断：置信度高于阈值认为是训练集样本
         threshold = 0.9

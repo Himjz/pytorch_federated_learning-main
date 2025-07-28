@@ -96,8 +96,7 @@ def fed_run():
                                                    model_name=config["system"]["model"],
                                                    dataset_info=info)
         elif config["client"]["fed_algo"] == 'FedDp':
-            client_dict[client_id] = FedDPClient(client_id, dataset_id=config["system"]["dataset"],
-                                                 epoch=config["client"]["num_local_epoch"],
+            client_dict[client_id] = FedDPClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                  model_name=config["system"]["model"],
                                                  dataset_info=info,
                                                  testset=testset)
