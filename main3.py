@@ -116,7 +116,8 @@ def fed_run():
         elif config["client"]["fed_algo"] == 'FedDp':
             client_dict[client_id] = FedDPClient(client_id, dataset_id=config["system"]["dataset"],
                                                epoch=config["client"]["num_local_epoch"],
-                                               model_name=config["system"]["model"])
+                                               model_name=config["system"]["model"],
+                                                 dataset_info=info)
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # 根据联邦学习算法和特定的联邦设置初始化服务器
