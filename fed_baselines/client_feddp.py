@@ -8,7 +8,7 @@ from preprocessing.fed_dataloader import DataSetInfo
 
 
 class FedDPClient(FedClient):
-    def __init__(self, name, epoch, dataset_id, model_name, dataset_info: DataSetInfo,
+    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo,
                  # 差分隐私参数
                  dp_epsilon=1.0, dp_alpha=0.1, delta=1e-5, sensitivity=1.0,
                  # 对抗训练参数
@@ -33,6 +33,10 @@ class FedDPClient(FedClient):
         self.epoch_count = 0            # 累计训练 epoch 数
         # 新增属性：是否使用对抗训练
         self.use_adv_training = use_adv_training
+
+    def load_testset(self, testset):
+        """客户端加载测试数据集。"""
+        self.testset = testset
 
     def _compute_dp_noise_scale(self):
         """计算差分隐私噪声的标准差（原梯度噪声）"""
@@ -106,6 +110,9 @@ class FedDPClient(FedClient):
         self._adjust_dp_epsilon()
         self.epoch_count += self._epoch
 
+        # 初始化损失变量
+        loss = None
+
         # 训练主循环
         for epoch in range(self._epoch):
             for step, (x, y) in enumerate(train_loader):
@@ -144,4 +151,64 @@ class FedDPClient(FedClient):
 
                 optimizer.step()
 
-        return self.model.state_dict(), self.n_data, loss.data.cpu().numpy()
+        # 解决局部变量 'loss' 可能在赋值前引用的问题
+        if loss is None:
+            loss = torch.tensor(0.0, device=self._device)
+
+        model_state = self.model.state_dict()
+        # 进行成员推理攻击评估
+        attack_accuracy = self.membership_inference_attack()
+        return model_state, self.n_data, loss.data.cpu().numpy(), attack_accuracy
+
+    def membership_inference_attack(self):
+        """模拟成员推理攻击并评估性能"""
+        if self.testset is None:
+            raise ValueError("测试集未加载，请先调用 load_testset 方法加载测试集。")
+
+        # 划分训练集和测试集的一部分作为攻击数据集
+        train_size = int(len(self.trainset) * 0.8)
+        train_subset, attack_in_train = torch.utils.data.random_split(self.trainset,
+                                                                      [train_size, len(self.trainset) - train_size])
+        test_size = int(len(self.testset) * 0.8)
+        test_subset, attack_out_train = torch.utils.data.random_split(self.testset,
+                                                                      [test_size, len(self.testset) - test_size])
+
+        # 重新设置训练集
+        self.trainset = train_subset
+
+        # 准备攻击数据集
+        attack_data = []
+        attack_labels = []
+
+        # 训练集中的样本标签为 1
+        for x, y in attack_in_train:
+            # 确保 x 是张量
+            if not isinstance(x, torch.Tensor):
+                x = torch.tensor(x, dtype=torch.float32)
+            x = x.to(self._device).unsqueeze(0)
+            output = self.model(x)
+            confidence = torch.nn.functional.softmax(output, dim=1).max().item()
+            attack_data.append(confidence)
+            attack_labels.append(1)
+
+        # 测试集中的样本标签为 0
+        for x, y in attack_out_train:
+            # 确保 x 是张量
+            if not isinstance(x, torch.Tensor):
+                x = torch.tensor(x, dtype=torch.float32)
+            x = x.to(self._device).unsqueeze(0)
+            output = self.model(x)
+            confidence = torch.nn.functional.softmax(output, dim=1).max().item()
+            attack_data.append(confidence)
+            attack_labels.append(0)
+
+        # 简单阈值判断：置信度高于阈值认为是训练集样本
+        threshold = 0.9
+        correct_predictions = 0
+        for i in range(len(attack_data)):
+            prediction = 1 if attack_data[i] >= threshold else 0
+            if prediction == attack_labels[i]:
+                correct_predictions += 1
+
+        accuracy = correct_predictions / len(attack_data)
+        return accuracy
