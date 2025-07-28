@@ -3,20 +3,25 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from matplotlib.ticker import MaxNLocator, AutoMinorLocator
+from matplotlib.ticker import MaxNLocator
 import seaborn as sns
 from scipy.signal import savgol_filter
 
 # 设置绘图风格
 sns.set_style("whitegrid")
 plt.rcParams["font.family"] = ["DejaVu Sans", "Arial", "sans-serif"]
-plt.rcParams["axes.unicode_minus"] = False  # 解决负号显示问题
-plt.rcParams["axes.grid.axis"] = "y"  # 只显示y轴网格线
-plt.rcParams["grid.color"] = "#eeeeee"  # 浅灰色网格线
-plt.rcParams["grid.linewidth"] = 0.8  # 较细的网格线
-plt.rcParams["legend.loc"] = "upper left"  # 默认图例位置，避免遮挡数据
+plt.rcParams["axes.unicode_minus"] = False
+plt.rcParams["axes.grid.axis"] = "y"
+plt.rcParams["grid.color"] = "#eeeeee"
+plt.rcParams["grid.linewidth"] = 0.8
+plt.rcParams["legend.loc"] = "upper left"
 
-# 定义常用指标的英文名称映射
+# 字体设置
+plt.rcParams["font.size"] = 12
+plt.rcParams["svg.fonttype"] = "none"
+plt.rcParams["pdf.fonttype"] = 42
+
+# 指标映射
 METRIC_NAMES = {
     'accuracy': 'Accuracy',
     'precision': 'Precision',
@@ -30,7 +35,6 @@ METRIC_NAMES = {
     'model_transfer_avg': 'Model Transfer Avg. Time'
 }
 
-# 定义常用指标的单位映射
 METRIC_UNITS = {
     'accuracy': '%',
     'precision': '%',
@@ -44,29 +48,32 @@ METRIC_UNITS = {
     'model_transfer_avg': 's'
 }
 
-# 扩展专业配色方案（支持15组数据）
+# 配色方案
 PROFESSIONAL_COLORS = [
     '#4C72B0', '#55A868', '#C44E52', '#8172B3', '#CCB974',
-    '#64B5CD', '#4878CF', '#6ACC65', '#D65F5F', '#B47CC7',
-    '#C4AD66', '#77BEDB', '#3B75AF', '#38A649', '#A63838'
+    '#64B5CD', '#4878CF', '#6ACC65', '#D65F5F', '#B47CC7'
 ]
 
-# 线条样式组合（用于区分15组数据）
-LINE_STYLES = [
-    ('-', 'o'), ('-', 's'), ('-', '^'), ('-', 'D'), ('-', '*'),
-    ('--', 'o'), ('--', 's'), ('--', '^'), ('--', 'D'), ('--', '*'),
-    ('-.', 'o'), ('-.', 's'), ('-.', '^'), (':', 'o'), (':', 's')
-]
+# 算法样式（线型+标记）
+ALGORITHM_STYLES = {
+    'FedAvg': ('-', 'o'),  # 实线+圆点
+    'FedShapley': ('--', 's'),  # 虚线+方点
+}
+
+# 信任度颜色深浅
+TRUST_LEVELS = {
+    'FullTrusted': 1.0,  # 最深
+    'High': 0.8,  # 较深
+    'Low': 0.6,  # 较浅
+}
 
 
 def load_json_files(file_paths):
-    """加载多个JSON文件的数据"""
     data_dict = {}
     for path in file_paths:
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            # 提取文件名作为键
             file_name = os.path.splitext(os.path.basename(path))[0]
             data_dict[file_name] = data
             print(f"Successfully loaded file: {file_name}")
@@ -76,183 +83,155 @@ def load_json_files(file_paths):
 
 
 def get_common_metrics(data_dict):
-    """获取所有文件共有的指标"""
     if not data_dict:
         return []
-    # 取第一个文件的指标作为基准
     first_data = next(iter(data_dict.values()))
     common_metrics = set(first_data.keys())
-
-    # 求所有文件指标的交集
     for data in data_dict.values():
         common_metrics.intersection_update(data.keys())
 
-    # 按预设顺序排序，其余指标放在后面
     priority_order = ['accuracy', 'precision', 'recall', 'f1', 'loss',
                       'client_train_avg', 'server_train', 'client_update_avg',
                       'global_agg', 'model_transfer_avg']
     sorted_metrics = []
-    # 先添加优先级高的指标
     for metric in priority_order:
         if metric in common_metrics:
             sorted_metrics.append(metric)
             common_metrics.remove(metric)
-    # 再添加剩余指标
     sorted_metrics.extend(sorted(common_metrics))
     return sorted_metrics
 
 
 def get_metric_display_name(metric):
-    """获取指标的显示名称"""
     return METRIC_NAMES.get(metric, metric.replace('_', ' ').title())
 
 
 def get_metric_unit(metric):
-    """获取指标的单位"""
     return METRIC_UNITS.get(metric, '')
 
 
 def smooth_curve(y, window_size=5, polyorder=3):
-    """使用Savitzky-Golay滤波器平滑曲线"""
     if len(y) < window_size:
         return y
     return savgol_filter(y, window_length=window_size, polyorder=polyorder)
 
 
-def plot_metric(data_dict, metric, figsize=(14, 9), output_dir='metric_plots', show=False):
-    """绘制单个指标的趋势图，优化支持15组数据"""
-    # 创建图表（增大尺寸以适应更多数据）
-    fig, ax = plt.subplots(figsize=figsize)
+def parse_filename(filename):
+    """解析文件名，返回(信任度, 算法)"""
+    for trust in TRUST_LEVELS:
+        if filename.startswith(trust):
+            algorithm = filename[len(trust) + 1:]
+            return trust, algorithm
+    for alg in ALGORITHM_STYLES:
+        if filename.endswith(alg):
+            trust = filename[:-len(alg) - 1]
+            return trust, alg
+    return None, None
 
-    # 获取指标的显示名称和单位
+
+def plot_metric(data_dict, metric, figsize=(12, 7), output_dir='metric_plots',
+                show=False, vector_formats=['svg', 'pdf'], dpi=300):
+    fig, ax = plt.subplots(figsize=figsize)
     metric_name = get_metric_display_name(metric)
     metric_unit = get_metric_unit(metric)
-
     max_x = 0
-    num_datasets = len(data_dict)
 
-    for i, (label, data) in enumerate(data_dict.items()):
-        if metric not in data:
-            continue
+    # 按信任度和算法分组
+    groups = {}
+    for filename in data_dict:
+        trust, algorithm = parse_filename(filename)
+        if trust not in groups:
+            groups[trust] = {}
+        groups[trust][algorithm] = data_dict[filename]
 
-        values = np.array(data[metric])
-        x = np.arange(1, len(values) + 1)
-        max_x = max(max_x, len(values))
+    # 为每个信任度分配基础颜色
+    trust_list = sorted(groups.keys(), key=lambda x: TRUST_LEVELS[x], reverse=True)
+    color_map = {trust: PROFESSIONAL_COLORS[i] for i, trust in enumerate(trust_list)}
 
-        # 计算平滑曲线
-        try:
-            smooth_values = smooth_curve(values)
-        except:
-            smooth_values = values  # 如果平滑失败，使用原始值
+    # 绘制所有曲线
+    for trust in trust_list:
+        algorithms = groups[trust]
+        base_color = color_map[trust]
+        # 调整颜色深浅
+        color = mcolors.to_rgb(base_color)
+        color = tuple(c * TRUST_LEVELS[trust] for c in color)
 
-        # 获取线条样式和标记（支持15组数据区分）
-        line_style, marker = LINE_STYLES[i % len(LINE_STYLES)]
-        color = PROFESSIONAL_COLORS[i % len(PROFESSIONAL_COLORS)]
+        for algorithm in algorithms:
+            if metric not in algorithms[algorithm]:
+                continue
+            values = np.array(algorithms[algorithm][metric])
+            x = np.arange(1, len(values) + 1)
+            max_x = max(max_x, len(x))
 
-        # 绘制平滑曲线
-        line, = ax.plot(x, smooth_values, label=label, color=color,
-                        linestyle=line_style, linewidth=2.2, alpha=0.9)
+            # 平滑曲线
+            smooth_vals = smooth_curve(values)
 
-        # 绘制原始数据点（根据数据量调整大小）
-        marker_size = 40 if len(x) < 20 else 30
-        ax.scatter(x, values, s=marker_size, color=color, alpha=0.6,
-                   marker=marker, edgecolors='white', linewidth=0.5, zorder=3)
+            # 获取线型和标记
+            line_style, marker = ALGORITHM_STYLES.get(algorithm, ('-', 'o'))
 
-    # 设置图表属性
-    ax.set_title(f'{metric_name} Trend Analysis', fontsize=18, pad=20, fontweight='bold')
-    ax.set_xlabel('Iteration', fontsize=15, labelpad=12)
-    ax.set_ylabel(f'{metric_name} ({metric_unit})', fontsize=15, labelpad=12)
+            # 绘制曲线（减小标记大小，调整线条粗细）
+            ax.plot(
+                x, smooth_vals,
+                label=f'{trust}-{algorithm}',
+                color=color,
+                linestyle=line_style,
+                linewidth=2,  # 线条粗细适中
+                marker=marker,
+                markersize=4,  # 标记大小减小（原6→4）
+                markevery=max(1, len(x) // 20),  # 稀疏显示标记（避免过于密集）
+                alpha=0.9
+            )
 
-    # 设置坐标轴范围和刻度
-    x_padding = max(1, max_x * 0.05)  # 扩展X轴范围
-    ax.set_xlim(1 - x_padding, max_x + x_padding)
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # x轴只显示整数
-    ax.xaxis.set_minor_locator(AutoMinorLocator(2))  # 设置次要刻度
+    # 坐标轴设置
+    ax.set_title(f'{metric_name} Comparison', fontsize=16, pad=15)
+    ax.set_xlabel('Iteration', fontsize=14)
+    ax.set_ylabel(f'{metric_name} ({metric_unit})', fontsize=14)
+    ax.set_xlim(0, max_x + 1)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.grid(True, alpha=0.3)
 
-    # 设置y轴范围，留出适当空间
-    y_min, y_max = ax.get_ylim()
-    padding = (y_max - y_min) * 0.15  # 增加Y轴边距，避免图例遮挡
-    ax.set_ylim(y_min - padding, y_max + padding)
-
-    # 自定义网格线
-    ax.grid(True, which='major', linestyle='-', alpha=0.5, color='#eeeeee')
-
-    # 设置坐标轴刻度字体大小
-    ax.tick_params(axis='both', which='major', labelsize=12)
-    ax.tick_params(axis='both', which='minor', labelsize=10)
-
-    # 设置坐标轴边框
-    for spine in ax.spines.values():
-        spine.set_color('#cccccc')
-        spine.set_linewidth(0.8)
-
-    # 优化图例（15组数据专用布局）
-    if num_datasets > 10:
-        # 超过10组数据时，将图例分为两列
-        legend = ax.legend(fontsize=11, frameon=True, loc='upper left',
-                           fancybox=True, framealpha=0.9, shadow=False,
-                           edgecolor='#dddddd', ncol=2, columnspacing=1.5)
-    else:
-        legend = ax.legend(fontsize=11, frameon=True, loc='upper left',
-                           fancybox=True, framealpha=0.9, shadow=False,
-                           edgecolor='#dddddd')
-    legend.get_frame().set_linewidth(0.5)
-    plt.setp(legend.get_texts(), multialignment='left')  # 图例文本左对齐
-
-    # 添加水平参考线（如果有意义）
-    if metric in ['accuracy', 'precision', 'recall', 'f1']:
-        ax.axhline(y=50, color='#cccccc', linestyle='--', linewidth=1, alpha=0.7)
-
-    # 调整布局（增加底部边距，防止图例被截断）
-    plt.tight_layout(rect=[0, 0.03, 1, 0.97])
+    # 图例设置
+    ax.legend(fontsize=10, loc='best')
 
     # 保存图表
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         save_path = os.path.join(output_dir, f'{metric}.png')
-        fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=False)
-        print(f"Saved chart: {save_path}")
+        fig.savefig(save_path, dpi=dpi, bbox_inches='tight')
+        print(f"Saved PNG: {save_path}")
 
-    # 显示图表
+        for fmt in vector_formats:
+            vec_path = os.path.join(output_dir, f'{metric}.{fmt}')
+            fig.savefig(vec_path, bbox_inches='tight')
+            print(f"Saved {fmt}: {vec_path}")
+
     if show:
         plt.show()
-
     return fig
 
 
 def main():
-    # 自动获取当前目录下的所有JSON文件
     json_files = [f for f in os.listdir('.') if f.endswith('.json')]
-
     if not json_files:
-        print("No JSON files found in the current directory.")
+        print("No JSON files found.")
         return
 
-    print(f"Found {len(json_files)} JSON files (supporting up to 15 datasets).")
-
-    # 加载所有JSON文件
+    print(f"Found {len(json_files)} JSON files.")
     data_dict = load_json_files(json_files)
     if not data_dict:
-        print("Failed to load any data files.")
+        print("No data loaded.")
         return
 
-    # 检查数据组数
-    if len(data_dict) > 15:
-        print(f"Warning: Detected {len(data_dict)} datasets, which exceeds the optimal 15. "
-              "Consider reducing the number of datasets for better visualization.")
-
-    # 获取所有公共指标
     metrics = get_common_metrics(data_dict)
-    print(f"Metrics to plot: {', '.join([get_metric_display_name(m) for m in metrics])}")
+    print(f"Metrics to plot: {', '.join(metrics)}")
 
-    # 为每个指标绘制图表
     for metric in metrics:
         try:
-            plot_metric(data_dict, metric, show=False)
+            plot_metric(data_dict, metric)
         except Exception as e:
-            print(f"Error plotting {get_metric_display_name(metric)}: {str(e)}")
+            print(f"Error plotting {metric}: {str(e)}")
 
-    print("All charts generated successfully.")
+    print("Plotting completed.")
 
 
 if __name__ == "__main__":
