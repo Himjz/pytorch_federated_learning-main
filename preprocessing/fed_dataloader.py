@@ -196,6 +196,16 @@ def divide_data(
     np.random.seed(i_seed)
     device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    # 处理 untrusted_strategies 的兼容性
+    if untrusted_strategies is None:
+        untrusted_strategies = [1.0] * num_client
+    elif len(untrusted_strategies) < num_client:
+        # 若长度小于 num_client，用默认值 1.0 填充
+        untrusted_strategies = untrusted_strategies + [1.0] * (num_client - len(untrusted_strategies))
+    elif len(untrusted_strategies) > num_client:
+        # 若长度超过 num_client，截取前 num_client 个元素
+        untrusted_strategies = untrusted_strategies[:num_client]
+
     # 加载数据
     base_images, base_labels, num_classes, testset, dataset_info = load_data(
         root=root,
@@ -303,35 +313,57 @@ def divide_data(
 
 
 def verify_loader(client_data, client_id, device):
-    """验证数据加载器"""
-    ds = client_data[client_id]
-    batch_size = min(5, len(ds))
-
-    loader = DataLoader(
-        ds,
-        batch_size=batch_size,
-        shuffle=False,
-        pin_memory=(device.type == 'cpu'),
-        num_workers=0 if device.type == 'cuda' else 2
-    )
-
+    """
+    验证指定客户端的数据加载器是否正常工作，检查数据和标签的一致性。
+    :param client_data: 客户端数据字典
+    :param client_id: 客户端 ID
+    :param device: 计算设备（CPU/GPU）
+    :return: 验证结果（True 表示通过验证，False 表示未通过验证）
+    """
     try:
-        batch_imgs, batch_labels = next(iter(loader))
-    except StopIteration:
-        print(f"\n验证客户端 {client_id} 的加载器:")
-        print("  ❌ 数据集为空，无法获取批次数据")
-        return
+        # 检查客户端 ID 是否存在于数据中
+        if client_id not in client_data:
+            print(f"客户端 ID {client_id} 不存在于数据中。")
+            return False
 
-    print(f"\n验证客户端 {client_id} 的加载器:")
-    print(f"  图像设备: {batch_imgs.device}")
-    print(f"  图像形状: {batch_imgs.shape}")
-    print(f"  返回标签: {batch_labels.tolist()}")
-    print(f"  预期标签: {[ds.custom_labels.get(idx, ds.base_labels[ds.indices[idx]]) for idx in range(batch_size)]}")
-    if ds.noisy_mask.any():
-        print(f"  批量中含特征噪声的样本索引: {[idx for idx in range(batch_size) if ds.noisy_mask[idx].item()]}")
-    print("  ✅ 验证通过" if (
-            batch_labels.tolist() == [ds.custom_labels.get(idx, ds.base_labels[ds.indices[idx]]) for idx in
-                                      range(batch_size)]) else "  ❌ 验证失败")
+        # 获取客户端数据集
+        dataset = client_data[client_id]
+
+        # 检查数据集是否为空
+        if len(dataset) == 0:
+            print(f"客户端 {client_id} 的数据集为空。")
+            return False
+
+        # 遍历数据集，检查数据和标签的一致性
+        for i in range(len(dataset)):
+            data, label = dataset[i]
+
+            # 检查数据是否为有效的张量
+            if not isinstance(data, torch.Tensor):
+                print(f"客户端 {client_id} 的第 {i} 个样本数据不是有效的张量。")
+                return False
+
+            # 检查标签是否为有效的整数或张量
+            if not (isinstance(label, int) or isinstance(label, torch.Tensor)):
+                print(f"客户端 {client_id} 的第 {i} 个样本标签不是有效的整数或张量。")
+                return False
+
+            # 如果标签是张量，检查其是否为单元素张量
+            if isinstance(label, torch.Tensor) and label.numel() != 1:
+                print(f"客户端 {client_id} 的第 {i} 个样本标签不是单元素张量。")
+                return False
+
+            # 将数据和标签移动到指定设备
+            data = data.to(device)
+            if isinstance(label, torch.Tensor):
+                label = label.to(device)
+
+        print(f"客户端 {client_id} 的数据加载器验证通过。")
+        return True
+
+    except Exception as e:
+        print(f"验证客户端 {client_id} 的数据加载器时出现错误: {e}")
+        return False
 
 
 if __name__ == "__main__":
