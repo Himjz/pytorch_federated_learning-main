@@ -2,16 +2,9 @@ import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-import sys
-from pathlib import Path
-
-from preprocessing.fed_dataloader import DataSetInfo
-
-# 解决模块导入路径问题
-project_root = str(Path(__file__).resolve().parent.parent)
-sys.path.append(project_root)
 
 from fed_baselines.client_base import FedClient
+from preprocessing.fed_dataloader import DataSetInfo
 
 
 class FedDPClient(FedClient):
