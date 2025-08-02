@@ -25,8 +25,7 @@ PyTorch-Federated-Learning 提供了使用PyTorch框架实现的各种联邦学�
 
 - Python (3.13.3)
 - PyTorch (2.7.1)
-- OpenCV (4.11)
-- numpy (2.3.1)
+- numpy (2.3.2)
 
 ### 安装要求
 
