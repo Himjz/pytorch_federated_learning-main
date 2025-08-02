@@ -2,117 +2,80 @@ import platform
 import re
 import subprocess
 import sys
-import time
-import traceback
-from datetime import datetime
+import os
+import logging
+from pathlib import Path
+from typing import Tuple, List, Optional
 
-# 错误日志文件路径
-ERROR_LOG_FILE = "install_errors.log"
-
-def log_error(message):
-    """将错误信息写入日志文件"""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    try:
-        with open(ERROR_LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(f"[{timestamp}] 错误: {message}\n")
-            # 添加堆栈跟踪信息
-            traceback_info = traceback.format_exc()
-            if traceback_info.strip() != "NoneType: None":  # 避免空跟踪信息
-                f.write(f"堆栈跟踪:\n{traceback_info}\n")
-            f.write("-" * 80 + "\n")
-    except Exception as e:
-        print(f"记录错误日志失败: {e}")
-        print(f"错误内容: {message}")
-
-# 强制要求 Python 3.9+
-if sys.version_info < (3, 9):
-    error_msg = f"""
-    此项目需要 Python 3.9 或更高版本，但您当前使用的是 Python {sys.version_info.major}.{sys.version_info.minor}.
-    请升级 Python 到 3.9 或更高版本后再安装。
-    """
-    log_error(error_msg)
-    sys.exit(error_msg)
+# 程序名称（用于日志目录命名）
+PROGRAM_NAME = "pytorch_federated_learning"
+# 日志文件路径变量（全局存储，用于最后打印）
+LOG_FILE_PATH = None
 
 
+def check_python_version() -> None:
+    """检查Python版本是否满足要求（3.9+），不满足则退出程序"""
+    required_version = (3, 9)
+    current_version = sys.version_info[:2]
+
+    if current_version < required_version:
+        error_msg = (
+            f"此项目需要 Python {required_version[0]}.{required_version[1]} 或更高版本，"
+            f"但您当前使用的是 Python {current_version[0]}.{current_version[1]}.\n"
+            "请升级 Python 到 3.9 或更高版本后再安装。"
+        )
+        sys.exit(error_msg)
 
 
-
-class BasicProgress:
-    """基础进度显示类，不依赖任何第三方库"""
-
-    def __init__(self, total, description, unit='项'):
-        self.total = total
-        self.description = description
-        self.unit = unit
-        self.completed = 0
-        self.start_time = time.time()
-        self.last_updated = 0
-        self._print_progress()
-
-    def update(self, n=1):
-        """更新进度"""
-        self.completed = min(self.completed + n, self.total)
-        # 控制更新频率，避免输出太频繁
-        current_time = time.time()
-        if self.completed == self.total or current_time - self.last_updated > 0.5:
-            self._print_progress()
-            self.last_updated = current_time
-
-    def close(self):
-        """完成进度显示"""
-        if self.completed < self.total:
-            self.completed = self.total
-            self._print_progress()
-        elapsed = time.time() - self.start_time
-        print(f"\n{self.description} 完成，耗时 {elapsed:.1f} 秒")
-
-    def _print_progress(self):
-        """打印进度信息"""
-        percentage = (self.completed / self.total) * 100 if self.total > 0 else 100
-        # 简单的进度条，由#和空格组成
-        bar_length = 30
-        filled_length = int(bar_length * self.completed // self.total)
-        bar = '#' * filled_length + ' ' * (bar_length - filled_length)
-        print(f"\r{self.description}: [{bar}] {self.completed}/{self.total} {self.unit} ({percentage:.1f}%)", end='',
-              flush=True)
-
-
-def get_python_version():
-    """获取 Python 版本信息"""
+def get_python_version() -> str:
+    """获取当前Python版本信息"""
     return platform.python_version()
 
 
-def get_cuda_info():
-    """检查 CUDA 可用性并获取驱动版本"""
+def get_cuda_info() -> Tuple[bool, Optional[str]]:
+    """
+    检查CUDA可用性并获取版本信息
+    返回: Tuple[bool, Optional[str]]: (CUDA是否可用, CUDA版本号或None)
+    """
     cuda_available = False
     cuda_version = None
+    version_pattern = re.compile(r'(\d+\.\d+)')  # 用于提取版本号的正则表达式
 
-    # 定义版本提取正则表达式
-    version_pattern = re.compile(r'(\d+\.\d+)')
-
-    # 尝试通过 nvcc 获取 CUDA 编译器版本
+    # 尝试通过nvcc获取CUDA编译器版本（优先方法）
     try:
         nvcc_output = subprocess.check_output(
             ['nvcc', '--version'],
             stderr=subprocess.STDOUT,
-            timeout=5
-        ).decode()
+            timeout=5,
+            text=True
+        )
 
         match = version_pattern.search(nvcc_output)
         if match:
             cuda_available = True
             cuda_version = match.group(1)
+            logging.info(f"通过 nvcc 检测到 CUDA 版本: {cuda_version}")
+            print(f"通过 nvcc 检测到 CUDA 版本: {cuda_version}")
             return cuda_available, cuda_version
-    except Exception as e:
-        log_error(f"通过 nvcc 获取 CUDA 版本失败: {e}")
 
-    # 尝试通过 nvidia-smi 获取 CUDA 驱动版本
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logging.warning("未找到nvcc，无法通过nvcc检测CUDA版本")
+        print("未找到nvcc，尝试其他方式检测CUDA版本")
+    except TimeoutError:
+        logging.warning("nvcc版本检测超时")
+        print("nvcc检测超时，尝试其他方式检测CUDA版本")
+    except Exception as e:
+        logging.error(f"通过nvcc检测CUDA时发生意外错误: {str(e)}")
+        print("检测CUDA时发生错误，尝试其他方式")
+
+    # 尝试通过nvidia-smi获取CUDA驱动版本
     try:
         smi_output = subprocess.check_output(
             ['nvidia-smi'],
             stderr=subprocess.STDOUT,
-            timeout=5
-        ).decode()
+            timeout=5,
+            text=True
+        )
 
         for line in smi_output.split('\n'):
             if 'CUDA Version' in line:
@@ -120,38 +83,85 @@ def get_cuda_info():
                 if match:
                     cuda_available = True
                     cuda_version = match.group(1)
+                    logging.info(f"通过 nvidia-smi 检测到 CUDA 版本: {cuda_version}")
+                    print(f"通过 nvidia-smi 检测到 CUDA 版本: {cuda_version}")
                     return cuda_available, cuda_version
-    except Exception as e:
-        log_error(f"通过 nvidia-smi 获取 CUDA 版本失败: {e}")
 
-    # 尝试通过 PyTorch 检查 CUDA
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logging.warning("未找到nvidia-smi，无法通过nvidia-smi检测CUDA版本")
+        print("未找到nvidia-smi，尝试其他方式检测CUDA版本")
+    except TimeoutError:
+        logging.warning("nvidia-smi版本检测超时")
+        print("nvidia-smi检测超时，尝试其他方式检测CUDA版本")
+    except Exception as e:
+        logging.error(f"通过nvidia-smi检测CUDA时发生意外错误: {str(e)}")
+        print("检测CUDA时发生错误，尝试其他方式")
+
+    # 尝试通过PyTorch检查CUDA（如果已安装）
     try:
         import torch
         if torch.cuda.is_available():
             cuda_available = True
             cuda_version = torch.version.cuda
+            logging.info(f"通过 PyTorch 检测到 CUDA 版本: {cuda_version}")
+            print(f"通过 PyTorch 检测到 CUDA 版本: {cuda_version}")
             return cuda_available, cuda_version
-    except ImportError|NameError:
-        pass  # PyTorch 未安装是正常情况，无需记录错误
-    except Exception as e:
-        log_error(f"通过 PyTorch 检查 CUDA 失败: {e}")
 
+    except ImportError|NameError:
+        logging.info("PyTorch未安装，跳过CUDA检查")
+        print("PyTorch未安装，将在后续步骤安装")
+    except Exception as e:
+        logging.error(f"通过PyTorch检测CUDA时发生错误: {str(e)}")
+        print("检测CUDA时发生错误")
+
+    logging.info("未检测到CUDA环境，将安装CPU版本依赖")
+    print("未检测到CUDA环境，将安装CPU版本依赖")
     return cuda_available, cuda_version
 
 
-def get_pytorch_source():
-    """获取 PyTorch 专用源（根据 CUDA 环境）"""
+def generate_environment_report() -> str:
+    """生成并返回环境配置报告"""
+    python_version = get_python_version()
     cuda_available, cuda_version = get_cuda_info()
 
-    # 下载源设置
-    default_index = "https://pypi.tuna.tsinghua.edu.cn/simple"
-    torch_mirror_base = "https://mirrors.nju.edu.cn/pytorch/whl"
+    report = (
+        "==========================\n"
+        "环境配置报告\n"
+        "==========================\n"
+        f"Python 版本: {python_version}\n"
+        f"CUDA 可用性: {'可用' if cuda_available else '不可用'}\n"
+        f"CUDA 版本: {cuda_version if cuda_version else '未找到'}"
+    )
+    logging.info(f"生成环境报告:\n{report}")
+    return report
 
+
+def get_sources() -> Tuple[List[str], List[str]]:
+    """
+    获取分开管理的源列表
+    返回: Tuple[List[str], List[str]]:
+        第一个列表是PyTorch专用源（主源+备用源）
+        第二个列表是基础包源（主源+备用源）
+    """
+    # 基础包源配置（主源+备用源）
+    base_packages_primary = "https://pypi.tuna.tsinghua.edu.cn/simple"
+    base_packages_backup = "https://pypi.org/simple"
+    base_sources = [base_packages_primary, base_packages_backup]
+
+    # PyTorch专用源配置（主源+备用源）
+    torch_primary_base = "https://mirrors.nju.edu.cn/pytorch/whl"
+    torch_backup_base = "https://download.pytorch.org/whl"
+    torch_sources = [torch_primary_base, torch_backup_base]
+
+    # 记录源信息到日志（不输出到控制台）
+    logging.info(f"基础包源列表: {base_sources}")
+    logging.info(f"PyTorch源列表（基础）: {torch_sources}")
+
+    # 根据CUDA版本调整PyTorch源
+    cuda_available, cuda_version = get_cuda_info()
     if cuda_available and cuda_version:
         try:
             cuda_float = float(cuda_version)
-
-            # 定义版本映射表
             version_mapping = [
                 (12.8, "cu128"),
                 (12.6, "cu126"),
@@ -166,158 +176,191 @@ def get_pytorch_source():
                     break
 
             if cuda_folder:
-                return f"{torch_mirror_base}/{cuda_folder}"
-        except Exception as e:
-            log_error(f"CUDA 版本解析失败 ({cuda_version}): {e}")
+                # 为每个PyTorch源添加CUDA路径
+                configured_torch_sources = [
+                    f"{source}/{cuda_folder}" for source in torch_sources
+                ]
+                logging.info(f"配置PyTorch源（CUDA {cuda_folder}）: {configured_torch_sources}")
+                return configured_torch_sources, base_sources
+            else:
+                logging.warning(f"CUDA {cuda_version} 版本较旧，使用CPU版本PyTorch源")
+                print(f"CUDA {cuda_version} 版本较旧，将使用CPU版本PyTorch")
 
-    return default_index
+        except ValueError:
+            logging.error(f"无法解析CUDA版本: {cuda_version}，使用默认PyTorch源")
+            print(f"CUDA版本解析失败，将使用CPU版本PyTorch")
 
-
-def count_requirements(file_path):
-    """统计需求文件中的包数量"""
-    try:
-        with open(file_path, 'r') as f:
-            lines = f.readlines()
-
-        count = 0
-        for line in lines:
-            line = line.strip()
-            if line and not line.startswith('#'):
-                count += 1
-        return count
-    except Exception as e:
-        error_msg = f"统计需求文件 {file_path} 失败: {e}"
-        log_error(error_msg)
-        print(error_msg)
-        return 0
+    # 如果没有可用CUDA，使用CPU版本源
+    cpu_torch_sources = [f"{source}/cpu" for source in torch_sources]
+    logging.info(f"使用CPU版本PyTorch源: {cpu_torch_sources}")
+    return cpu_torch_sources, base_sources
 
 
-def install_with_progress(command, description, total_packages):
-    """执行安装命令并显示进度"""
-    print(f"\n{description}...")
+def setup_logging() -> None:
+    """配置日志系统，将日志写入系统缓存目录"""
+    global LOG_FILE_PATH  # 声明使用全局变量
 
-    try:
-        progress = BasicProgress(total_packages, description, '包')
+    # 获取系统缓存目录
+    if sys.platform.startswith('win32'):
+        # Windows系统通常使用LOCALAPPDATA
+        cache_dir = Path(os.environ.get('LOCALAPPDATA', Path.home() / '.cache'))
+    elif sys.platform.startswith('linux') or sys.platform.startswith('darwin'):
+        # Linux和macOS使用~/.cache
+        cache_dir = Path.home() / '.cache'
+    else:
+        # 其他系统默认使用用户目录下的.cache
+        cache_dir = Path.home() / '.cache'
 
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
-        )
+    # 创建程序日志目录
+    log_dir = cache_dir / PROGRAM_NAME / 'install'
+    log_dir.mkdir(parents=True, exist_ok=True)
 
-        installed_count = 0
-        last_installed = None
+    # 日志文件路径
+    LOG_FILE_PATH = log_dir / 'install.log'
 
-        for line in process.stdout:
-            if 'Installing collected packages:' in line:
-                continue
+    # 配置日志 - 增加DEBUG级别以捕获更多细节
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(LOG_FILE_PATH, encoding='utf-8'),
+            # 不添加StreamHandler，避免日志输出到控制台
+        ]
+    )
 
-            install_match = re.search(r'Installing (.*?)(\s|$)', line)
-            if install_match and install_match.group(1) != last_installed:
-                last_installed = install_match.group(1)
-                installed_count = min(installed_count + 1, total_packages)
-                progress.update(1)
+    logging.info("日志系统初始化完成")
+    logging.info(f"日志文件路径: {LOG_FILE_PATH}")
 
-        process.wait()
-        progress.close()
 
-        if process.returncode == 0:
+def parse_package_installation(output: str, source: str) -> None:
+    """
+    解析安装输出，提取并记录包的下载信息
+    参数:
+        output: 命令输出内容
+        source: 下载源
+    """
+    # 记录完整输出
+    logging.debug(f"安装命令完整输出:\n{output}")
+
+    # 提取已安装/已下载的包信息
+    lines = output.split('\n')
+    for line in lines:
+        line = line.strip()
+        # 匹配安装/升级包的行
+        if line.startswith(('Installing ', 'Upgrading ', 'Downloading ')):
+            logging.info(f"包操作: {line} (源: {source})")
+        # 匹配已满足依赖的行
+        elif line.startswith('Requirement already satisfied:'):
+            pkg_info = line.replace('Requirement already satisfied:', '').strip()
+            logging.info(f"包已安装: {pkg_info}")
+        # 匹配成功安装的行
+        elif line.startswith('Successfully installed'):
+            pkgs = line.replace('Successfully installed', '').strip()
+            logging.info(f"安装成功: {pkgs} (源: {source})")
+
+
+def run_command_with_retry(command_base: List[str], sources: List[str], description: str) -> bool:
+    """
+    带源重试机制的命令执行函数：当主源失败时，自动尝试其他源
+    增强日志记录，详细记录所有包的下载信息
+    参数:
+        command_base: 基础命令列表（不含 -i 源参数）
+        sources: 源列表（按优先级排序）
+        description: 命令描述
+    返回: bool: 是否成功执行
+    """
+    for i, source in enumerate(sources):
+        try:
+            # 构建完整命令（添加当前源参数）
+            command = command_base + ["-i", source]
+            logging.info(f"执行命令（源 {i + 1}/{len(sources)}）: {' '.join(command)}")
+            print(f"正在{description}（尝试 {i + 1}/{len(sources)}）...")
+
+            result = subprocess.run(
+                command,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            # 解析并记录包安装信息
+            parse_package_installation(result.stdout, source)
+
+            logging.info(f"{description}成功（使用源: {source}）")
             print(f"{description}成功")
             return True
-        else:
-            error_msg = f"{description}失败，返回代码: {process.returncode}"
-            log_error(error_msg)
-            print(error_msg)
-            return False
+        except subprocess.CalledProcessError as e:
+            # 错误输出也记录包相关信息
+            logging.error(f"使用源 {source} {description}失败: 返回代码 {e.returncode}")
+            logging.error(f"错误输出内容:\n{e.stderr}")
+            parse_package_installation(e.stdout, source)  # 即使失败也记录已安装的包
+            print(f"{description}尝试 {i + 1} 失败")
+            if i < len(sources) - 1:
+                print(f"正在尝试下一个方案...")
+            else:
+                print(f"{description}失败")
+        except Exception as e:
+            logging.error(f"使用源 {source} 执行命令时发生错误: {str(e)}")
+            print(f"{description}尝试 {i + 1} 发生错误")
+            if i < len(sources) - 1:
+                print(f"正在尝试下一个方案...")
+            else:
+                print(f"{description}失败")
 
-    except Exception as e:
-        error_msg = f"{description}过程中出错: {e}"
-        log_error(error_msg)
-        print(error_msg)
-        return False
-
-
-def run_command(command, description):
-    """执行简单命令并处理错误"""
-    print(f"\n{description}...")
-
-    try:
-        result = subprocess.run(
-            command,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
-        print(f"{description}成功")
-        return True
-    except subprocess.CalledProcessError as e:
-        error_msg = f"{description}失败: {e.stdout}"
-        log_error(error_msg)
-        print(f"{description}失败，请查看错误日志获取详情")
-        return False
-    except Exception as e:
-        error_msg = f"{description}过程中出错: {e}"
-        log_error(error_msg)
-        print(f"{description}失败，请查看错误日志获取详情")
-        return False
+    return False
 
 
-def main():
-    try:
-        # 打印简要环境信息
-        python_version = get_python_version()
-        cuda_available, cuda_version = get_cuda_info()
+def main() -> None:
+    """主函数，协调环境检测和依赖安装过程"""
+    # 初始化日志
+    setup_logging()
 
-        print("环境信息:")
-        print(f"Python 版本: {python_version}")
-        print(f"CUDA 可用性: {'可用' if cuda_available else '不可用'}")
-        if cuda_available:
-            print(f"CUDA 版本: {cuda_version}")
+    # 检查Python版本
+    check_python_version()
 
-        # 1. 更新 pip
-        if not run_command(
-                [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
-                "更新 pip"
-        ):
-            print("pip 更新失败，继续尝试安装依赖...")
+    # 生成并打印环境报告
+    report = generate_environment_report()
+    print(report)
 
-        # 2. 安装基础依赖
-        req_count = count_requirements("requirements/requirements.txt")
-        if req_count > 0:
-            if not install_with_progress(
-                    [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements.txt"],
-                    "安装基础依赖",
-                    req_count
-            ):
-                print("基础依赖安装失败，可能导致后续步骤出错")
-        else:
-            print("未找到基础依赖需求文件或文件为空")
+    # 获取分开管理的源列表
+    torch_sources, base_sources = get_sources()
 
-        # 3. 获取 PyTorch 源并安装相关依赖
-        pytorch_source = get_pytorch_source()
-        torch_req_count = count_requirements("requirements/requirements_torch.txt")
-        if torch_req_count > 0:
-            install_with_progress(
-                [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements_torch.txt", "-i",
-                 pytorch_source],
-                "安装 PyTorch 相关依赖",
-                torch_req_count
-            )
-        else:
-            print("未找到 PyTorch 依赖需求文件或文件为空")
+    # 升级pip（使用基础包源）
+    pip_upgrade_base = [sys.executable, "-m", "pip", "install", "--upgrade", "pip"]
+    if not run_command_with_retry(pip_upgrade_base, base_sources, "升级pip"):
+        logging.warning("pip升级失败")
+        print("警告：pip升级失败，继续安装依赖但可能会遇到问题")
 
-        print("\n所有安装步骤执行完毕")
-        print(f"如果遇到问题，请查看错误日志: {ERROR_LOG_FILE}")
+    # 安装基础依赖（使用基础包源）
+    base_deps_success = run_command_with_retry(
+        [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements.txt"],
+        base_sources,
+        "安装基础依赖"
+    )
+    if not base_deps_success:
+        logging.error("基础依赖安装失败，所有源均尝试过")
+        # 失败时也打印日志路径
+        print(f"\n安装日志已保存至: {LOG_FILE_PATH}")
+        sys.exit("基础依赖安装失败，无法继续")
 
-    except Exception as e:
-        error_msg = f"安装过程中发生致命错误: {e}"
-        log_error(error_msg)
-        print(f"\n安装失败: {error_msg}")
-        print(f"详细错误信息已记录到: {ERROR_LOG_FILE}")
-        sys.exit(1)
+    # 安装PyTorch相关依赖（使用PyTorch专用源）
+    torch_deps_success = run_command_with_retry(
+        [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements_torch.txt"],
+        torch_sources,
+        "安装PyTorch相关依赖"
+    )
+    if not torch_deps_success:
+        logging.error("PyTorch相关依赖安装失败，所有源均尝试过")
+        # 失败时也打印日志路径
+        print(f"\n安装日志已保存至: {LOG_FILE_PATH}")
+        sys.exit("PyTorch相关依赖安装失败，无法继续")
+
+    logging.info("所有依赖安装完成")
+    print("\n所有依赖安装完成！")
+    # 成功完成后打印日志路径
+    print(f"安装日志已保存至: {LOG_FILE_PATH}")
+    print("如需查看详细安装过程或排查问题，可查看此日志文件")
 
 
 if __name__ == "__main__":
