@@ -1,0 +1,15 @@
+{
+  "HE": {
+    "key_size": 1024,
+    "scheme": "paillier",
+    "plaintext_range": [
+      0,
+      1000000
+    ]
+  },
+  "DP": {
+    "epsilon": 1.0,
+    "delta": 1e-5,
+    "sigma": 0
+  }
+}
