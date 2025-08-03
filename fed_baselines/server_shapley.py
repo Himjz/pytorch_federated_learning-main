@@ -2,9 +2,12 @@ from fed_baselines import server_base
 import itertools
 import copy
 
+from preprocessing.fed_dataloader import DataSetInfo
+
+
 class FedShapley(server_base.FedServer):
-    def __init__(self, client_list, dataset_id, model_name):
-        super().__init__(client_list, dataset_id, model_name)
+    def __init__(self, client_list, model_name, dataset_info: DataSetInfo):
+        super().__init__(client_list, model_name, dataset_info)
         self.client_states = {}
         self.client_data_sizes = {}
         self.client_losses = {}

@@ -1,13 +1,16 @@
 ## 一般夏普利值方法下,100个客户端在原始每轮14秒时，需计算5.93*10^27年
 ## 这里采用蒙特卡洛方法，减少计算量
-from fed_baselines import server_base
 import copy
 import random
 
+from fed_baselines import server_base
+from preprocessing.fed_dataloader import DataSetInfo
+
+
 class FedShapley(server_base.FedServer):
-    def __init__(self, client_list, dataset_id, model_name, monte_carlo_samples=120):
+    def __init__(self, client_list, dataset_id, model_name, dataset_info: DataSetInfo, monte_carlo_samples=120):
         # 调用父类初始化方法
-        super().__init__(client_list, dataset_id, model_name)
+        super().__init__(client_list, model_name, dataset_info)
         self.client_states = {}
         self.client_data_sizes = {}
         self.client_losses = {}
@@ -22,7 +25,8 @@ class FedShapley(server_base.FedServer):
         shapley_values = self.calculate_shapley_values()
 
         # 初始化聚合后的模型参数
-        aggregated_state_dict = copy.deepcopy(list(self.client_states.values())[0]) if self.client_states else self.model.state_dict()
+        aggregated_state_dict = copy.deepcopy(
+            list(self.client_states.values())[0]) if self.client_states else self.model.state_dict()
         for key in aggregated_state_dict.keys():
             aggregated_state_dict[key] = 0
 
