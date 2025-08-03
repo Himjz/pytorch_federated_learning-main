@@ -1,8 +1,8 @@
 system:
-  num_client: 10
-  num_local_class: 6
-  dataset: "SelfDataSet"
-  model: "EfficientCNN"
+  num_client: 5
+  num_local_class: 4
+  dataset: "MNIST"
+  model: "ResNet18"
   i_seed: 235235
   num_round: 100
   res_root: "results"
