@@ -4,20 +4,20 @@ import copy
 from torch.utils.data import DataLoader
 
 from fed_baselines.client_base import FedClient
+from preprocessing.fed_dataloader import DataSetInfo
 from utils.models import *
 
 
 class FedNovaClient(FedClient):
-    def __init__(self, name, epoch, dataset_id, model_name):
+    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo):
         """
         初始化 FedNova 客户端。
 
         :param name: 客户端名称
         :param epoch: 训练轮数
-        :param dataset_id: 数据集 ID
         :param model_name: 模型名称
         """
-        super().__init__(name, epoch, dataset_id, model_name)
+        super().__init__(name, epoch, model_name, dataset_info)
         self.rho = 0.9
         self._momentum = self.rho
 

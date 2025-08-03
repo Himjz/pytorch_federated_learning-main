@@ -25,12 +25,11 @@ PyTorch-Federated-Learning 提供了使用PyTorch框架实现的各种联邦学�
 
 - Python (3.13.3)
 - PyTorch (2.7.1)
-- OpenCV (4.11)
-- numpy (2.3.0)
+- numpy (2.3.2)
 
 ### 安装要求
 
-运行: `pip install -r requirements.txt` to install the required packages.
+运行: `python install.py` to install the required packages.
 
 ## 联邦数据集预处理
 

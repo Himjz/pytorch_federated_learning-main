@@ -1,10 +1,10 @@
+from collections import OrderedDict
+
 import numpy as np
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torchvision.models as models
-from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet34_Weights, ResNet101_Weights, \
-    ResNet152_Weights, MobileNet_V2_Weights
+from torchvision.models import ResNet34_Weights, ResNet50_Weights, ResNet101_Weights, ResNet152_Weights, \
+    ResNet18_Weights
 
 """
 我们提供了可能在 FedD3 实验中使用的模型，如下所示：
@@ -12,23 +12,17 @@ from torchvision.models import ResNet18_Weights, ResNet50_Weights, ResNet34_Weig
     - 为 MNIST 定制的 LeNet 模型，包含 61706 个参数
     - 更多的 ResNet 模型
     - 更多的 VGG 模型
-    - MobileNet 模型
-    - ShuffleNet 模型
 """
 
 
 # 为 CIFAR-10 定制的 AlexNet 模型，包含 1756426 个参数
 class AlexCifarNet(nn.Module):
-    supported_dims = {32, 300}  # 支持 32x32 和 300x300 的输入尺寸
+    supported_dims = {32}
 
-    def __init__(self, num_classes=10, in_channels=1, input_size=(300, 300)):
+    def __init__(self):
         super(AlexCifarNet, self).__init__()
-        # 验证输入尺寸是否受支持
-        if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
-            raise ValueError(f"输入尺寸 {input_size} 不受支持，支持的尺寸为 {self.supported_dims}")
-
         self.features = nn.Sequential(
-            nn.Conv2d(in_channels, 64, kernel_size=5, stride=1, padding=2),
+            nn.Conv2d(3, 64, kernel_size=5, stride=1, padding=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
             nn.LocalResponseNorm(4, alpha=0.001 / 9.0, beta=0.75, k=1),
@@ -37,36 +31,31 @@ class AlexCifarNet(nn.Module):
             nn.LocalResponseNorm(4, alpha=0.001 / 9.0, beta=0.75, k=1),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         )
-
-        # 提前计算全连接层的输入维度
-        with torch.no_grad():
-            test_input = torch.randn(1, in_channels, *input_size)
-            test_output = self.features(test_input)
-            test_output = test_output.view(test_output.size(0), -1)
-            flatten_size = test_output.size(1)
-
         self.classifier = nn.Sequential(
-            nn.Linear(flatten_size, 384),
+            nn.Linear(4096, 384),
             nn.ReLU(inplace=True),
             nn.Linear(384, 192),
             nn.ReLU(inplace=True),
-            nn.Linear(192, num_classes),
+            nn.Linear(192, 10),
         )
 
     def forward(self, x):
         out = self.features(x)
-        out = out.view(out.size(0), -1)
+        out = out.view(out.size(0), 4096)
         out = self.classifier(out)
         return out
 
 
 # 为 MNIST 定制的 LeNet 模型，包含 61706 个参数
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 class LeNet(nn.Module):
-    supported_dims = {256}    # 导入农业数据集时将该参数改为300
+    supported_dims = {28}  # 导入农业数据集时将该参数改为300
 
-    def __init__(self, num_classes=10, in_channels=1, input_size=(256, 256)):
+    def __init__(self, num_classes=10, in_channels=1, input_size=(28, 28)):  # 导入农业数据集时将input_size改为(300, 300)
         super(LeNet, self).__init__()
         # 验证输入尺寸是否受支持
         if input_size[0] not in self.supported_dims or input_size[1] not in self.supported_dims:
@@ -126,278 +115,90 @@ def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
 
     return model
 
+
+# 更多的 VGG 模型
 def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
-    """
-    生成支持动态输入尺寸和任意通道数的VGG模型
-    适配28×28、256×256等多种图像尺寸
-
-    参数:
-    - num_classes: 分类类别数
-    - in_channels: 输入图像通道数（1或3等）
-    - model_name: 模型名称，支持: vgg11, vgg11_bn, vgg13, vgg13_bn, vgg16, vgg16_bn, vgg19, vgg19_bn
-    """
-    # 规范化模型名称并检查有效性
-    model_name = model_name.lower().replace('_', '')
-    valid_models = ['vgg11', 'vgg13', 'vgg16', 'vgg19']
-    if not any(m in model_name for m in valid_models):
-        raise ValueError(f"不支持的模型名称: {model_name}")
-
-    # 获取模型创建函数和BN标志
-    has_bn = 'bn' in model_name
-    base_model_name = next(m for m in valid_models if m in model_name)
-    create_fn = getattr(models, f"{base_model_name}{'_bn' if has_bn else ''}")
-
-    # 创建基础模型（不使用预训练权重以避免尺寸适配问题）
-    model = create_fn(weights=None)
-
-    # 修改输入通道
-    if in_channels != 3:
-        first_conv = model.features[0]
-        new_conv = nn.Conv2d(
-            in_channels, first_conv.out_channels,
-            kernel_size=first_conv.kernel_size,
-            stride=first_conv.stride,
-            padding=first_conv.padding,
-            bias=first_conv.bias is not None
-        )
-        model.features[0] = new_conv
-
-    # 替换分类器为动态适配结构
-    # 获取最后一个卷积层的输出通道数
-    last_conv_channels = next(
-        layer.out_channels
-        for layer in reversed(model.features)
-        if isinstance(layer, nn.Conv2d)
-    )
-
-    # 动态分类器：使用全局池化消除空间尺寸依赖
-    model.classifier = nn.Sequential(
-        nn.AdaptiveAvgPool2d((7, 7)),  # 固定中间特征尺寸为7×7（VGG原始设计）
-        nn.Flatten(),
-        nn.Linear(last_conv_channels * 7 * 7, 4096),
-        nn.ReLU(True),
-        nn.Dropout(),
-        nn.Linear(4096, 4096),
-        nn.ReLU(True),
-        nn.Dropout(),
-        nn.Linear(4096, num_classes)
-    )
-
-    # 包装模型以动态调整池化层
-    class AdaptiveVGGWrapper(nn.Module):
-        def __init__(self, base_model):
-            super().__init__()
-            self.base_model = base_model
-            # 记录所有池化层位置
-            self.pool_layers = [
-                i for i, layer in enumerate(base_model.features)
-                if isinstance(layer, nn.MaxPool2d)
-            ]
-
-        def forward(self, x):
-            # 动态调整池化层
-            for i, layer in enumerate(self.base_model.features):
-                if i in self.pool_layers and isinstance(layer, nn.MaxPool2d):
-                    # 获取当前特征图尺寸
-                    h, w = x.shape[2], x.shape[3]
-                    kernel_size = layer.kernel_size[0] if isinstance(layer.kernel_size, tuple) else layer.kernel_size
-
-                    # 若特征图尺寸小于池化核，缩小池化核
-                    if h < kernel_size or w < kernel_size:
-                        new_kernel = min(kernel_size, h, w)
-                        x = nn.functional.max_pool2d(
-                            x,
-                            kernel_size=new_kernel,
-                            stride=min(layer.stride, new_kernel) if layer.stride else 1,
-                            padding=layer.padding
-                        )
-                        continue
-                # 正常通过当前层
-                x = layer(x)
-            # 经过分类器
-            x = self.base_model.classifier(x)
-            return x
-
-    return AdaptiveVGGWrapper(model)
-
-class CNN(nn.Module):
-    def __init__(self, num_classes=10, in_channels=32, max_kernel_size=3):
-        super(CNN, self).__init__()
-        self.num_classes = num_classes
-        self.init_channels = in_channels
-        self.max_kernel_size = max_kernel_size
-
-        # 动态卷积块（将在forward中确定具体参数）
-        self.conv_blocks = nn.ModuleList([
-            nn.Conv2d(1, in_channels, kernel_size=3, padding=1),  # 初始卷积层
-            nn.ReLU(),
-            nn.BatchNorm2d(in_channels)
-        ])
-
-        # 中间卷积组（动态调整）
-        self.mid_conv = nn.ModuleList([
-            nn.Conv2d(in_channels, in_channels * 2, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm2d(in_channels * 2),
-            nn.Conv2d(in_channels * 2, in_channels * 4, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm2d(in_channels * 4)
-        ])
-
-        # 分类头
-        self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d((1, 1)),  # 自适应池化确保固定输出尺寸
-            nn.Flatten(),
-            nn.Linear(in_channels * 4, 128),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128, num_classes)
-        )
-
-    def forward(self, x):
-        # 计算初始特征图尺寸
-        h, w = x.shape[2], x.shape[3]
-
-        # 动态调整第一个卷积块的池化操作
-        for layer in self.conv_blocks:
-            x = layer(x)
-
-        # 根据当前特征图尺寸确定池化参数
-        current_h, current_w = x.shape[2], x.shape[3]
-        pool_kernel = min(2, current_h // 2, current_w // 2)
-        if pool_kernel >= 1:
-            x = F.max_pool2d(x, kernel_size=pool_kernel, stride=pool_kernel)
-
-        # 处理中间卷积组
-        for i, layer in enumerate(self.mid_conv):
-            x = layer(x)
-            # 每两个卷积层后进行一次池化（动态调整）
-            if (i + 1) % 3 == 0:  # 每经过一个完整的卷积+BN块后池化
-                current_h, current_w = x.shape[2], x.shape[3]
-                pool_kernel = min(2, current_h // 2, current_w // 2)
-                if pool_kernel >= 1:
-                    x = F.max_pool2d(x, kernel_size=pool_kernel, stride=pool_kernel)
-
-        # 分类头
-        x = self.classifier(x)
-        return x
-
-
-class EfficientCNN(nn.Module):
-    def __init__(self, num_classes=10, in_channels=1, input_size=(256, 256)):
-        super(EfficientCNN, self).__init__()
-        # 验证输入尺寸
-        if input_size != (256, 256):
-            raise ValueError("仅支持 256x256 输入尺寸")
-
-        # 第一组卷积块 - 使用深度可分离卷积
-        self.group1 = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, groups=in_channels),
-            nn.Conv2d(in_channels, 16, kernel_size=1),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)  # 128x128
-        )
-
-        # 第二组卷积块 - 使用深度可分离卷积
-        self.group2 = nn.Sequential(
-            nn.Conv2d(16, 16, kernel_size=3, padding=1, groups=16),
-            nn.Conv2d(16, 32, kernel_size=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)  # 64x64
-        )
-
-        # 第三组卷积块 - 使用深度可分离卷积
-        self.group3 = nn.Sequential(
-            nn.Conv2d(32, 32, kernel_size=3, padding=1, groups=32),
-            nn.Conv2d(32, 64, kernel_size=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)  # 32x32
-        )
-
-        # 第四组卷积块 - 使用深度可分离卷积
-        self.group4 = nn.Sequential(
-            nn.Conv2d(64, 64, kernel_size=3, padding=1, groups=64),
-            nn.Conv2d(64, 128, kernel_size=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)  # 16x16
-        )
-
-        # 空间金字塔池化层 - 提取多尺度特征
-        self.spp = nn.AdaptiveAvgPool2d((4, 4))  # 固定输出4x4
-
-        # 动态计算全连接层的输入维度
-        with torch.no_grad():
-            test_input = torch.randn(1, in_channels, *input_size)
-            test_output = self.group1(test_input)
-            test_output = self.group2(test_output)
-            test_output = self.group3(test_output)
-            test_output = self.group4(test_output)
-            test_output = self.spp(test_output)
-            test_output = test_output.view(test_output.size(0), -1)
-            flatten_size = test_output.size(1)
-
-        # 全连接分类器
-        self.classifier = nn.Sequential(
-            nn.Linear(flatten_size, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
-            nn.Linear(256, num_classes)
-        )
-
-    def forward(self, x):
-        x = self.group1(x)
-        x = self.group2(x)
-        x = self.group3(x)
-        x = self.group4(x)
-        x = self.spp(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x
-
-# 生成 MobileNet 模型
-def generate_mobilenet(num_classes=10, in_channels=1, model_name="MobileNetV2", input_size=None):
-    if model_name == "MobileNetV2":
-        model = models.mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT)
+    if model_name == "VGG11":
+        model = models.vgg11(pretrained=False)
+    elif model_name == "VGG11_bn":
+        model = models.vgg11_bn(pretrained=True)
+    elif model_name == "VGG13":
+        model = models.vgg11(pretrained=False)
+    elif model_name == "VGG13_bn":
+        model = models.vgg11_bn(pretrained=True)
+    elif model_name == "VGG16":
+        model = models.vgg11(pretrained=False)
+    elif model_name == "VGG16_bn":
+        model = models.vgg11_bn(pretrained=True)
+    elif model_name == "VGG19":
+        model = models.vgg11(pretrained=False)
+    elif model_name == "VGG19_bn":
+        model = models.vgg11_bn(pretrained=True)
     else:
-        raise ValueError(f"不支持的模型名称: {model_name}")
+        raise ValueError(f"不支持的 VGG 模型: {model_name}")
 
-    # 修改输入通道
-    model.features[0][0] = nn.Conv2d(in_channels, 32, kernel_size=3, stride=2, padding=1, bias=False)
+    first_conv_layer = [nn.Conv2d(in_channels, 3, kernel_size=3, stride=1, padding=1, dilation=1, groups=1, bias=True)]
+    first_conv_layer.extend(list(model.features))
+    model.features = nn.Sequential(*first_conv_layer)
+    model.conv1 = nn.Conv2d(num_classes, 64, 7, stride=2, padding=3, bias=False)
 
-    # 动态支持输入尺寸
-    if input_size is not None:
-        # 计算特征图尺寸
-        h, w = input_size
-        for i in range(1, len(model.features)):
-            module = model.features[i]
-            if isinstance(module, nn.MaxPool2d) or isinstance(module, nn.Conv2d) and module.stride == (2, 2):
-                h = (h + 1) // 2
-                w = (w + 1) // 2
-
-        # 替换最后一个平均池化层为自适应池化
-        model.avg_pool = nn.AdaptiveAvgPool2d((h, w))
-
-    # 修改输出类别数
-    model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
+    fc_features = model.classifier[6].in_features
+    model.classifier[6] = nn.Linear(fc_features, num_classes)
 
     return model
 
+
+class CNN(nn.Module):
+    def __init__(self, num_classes=10, in_channels=1):
+        super(CNN, self).__init__()
+
+        self.fp_con1 = nn.Sequential(OrderedDict([
+            ('con0', nn.Conv2d(in_channels=in_channels, out_channels=32, kernel_size=3, padding=1)),
+            ('relu0', nn.ReLU(inplace=True)),
+        ]))
+
+        self.ternary_con2 = nn.Sequential(OrderedDict([
+            # 卷积层模块 1
+            ('conv1', nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1, bias=False)),
+            ('norm1', nn.BatchNorm2d(64)),
+            ('relu1', nn.ReLU(inplace=True)),
+            ('pool1', nn.MaxPool2d(kernel_size=2, stride=2)),
+
+            # 卷积层模块 2
+            ('conv2', nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1, bias=False)),
+            ('norm2', nn.BatchNorm2d(128)),
+            ('relu2', nn.ReLU(inplace=True)),
+            ('conv3', nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1, bias=False)),
+            ('norm3', nn.BatchNorm2d(128)),
+            ('relu3', nn.ReLU(inplace=True)),
+            ('pool2', nn.MaxPool2d(kernel_size=2, stride=2)),
+            # nn.Dropout2d(p=0.05),
+
+            # 卷积层模块 3
+            ('conv3', nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1, bias=False)),
+            ('norm3', nn.BatchNorm2d(256)),
+            ('relu3', nn.ReLU(inplace=True)),
+            ('conv4', nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1, bias=False)),
+            ('norm4', nn.BatchNorm2d(256)),
+            ('relu4', nn.ReLU(inplace=True)),
+            ('pool4', nn.MaxPool2d(kernel_size=2, stride=2)),
+        ]))
+
+        self.fp_fc = nn.Linear(4096, num_classes, bias=False)
+
+    def forward(self, x):
+        x = self.fp_con1(x)
+        x = self.ternary_con2(x)
+        x = x.view(x.size(0), -1)
+        x = self.fp_fc(x)
+        output = F.log_softmax(x, dim=1)
+        return output
+
+
 if __name__ == "__main__":
-    model_name_list = ["CNN", "EfficientCNN", "MobileNetV2", "ShuffleNetV2"]
+    model_name_list = ["ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152"]
     for model_name in model_name_list:
-        if model_name == "CNN":
-            model = CNN(num_classes=10, in_channels=1)
-        elif model_name == "EfficientCNN":
-            model = EfficientCNN(num_classes=10, in_channels=1, input_size=(256, 256))
-        elif model_name == "MobileNetV2":
-            model = generate_mobilenet(num_classes=10, in_channels=1, model_name=model_name)
+        model = generate_resnet(num_classes=10, in_channels=1, model_name=model_name)
         model_parameters = filter(lambda p: p.requires_grad, model.parameters())
         param_len = sum([np.prod(p.size()) for p in model_parameters])
         print('Number of model parameters of %s :' % model_name, ' %d ' % param_len)
-
-
