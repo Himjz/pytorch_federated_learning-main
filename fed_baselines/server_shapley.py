@@ -2,19 +2,26 @@ from fed_baselines import server_base
 import itertools
 import copy
 import random
+import numpy as np  # 用于更精确的随机数控制
 
 from preprocessing.fed_dataloader import DataSetInfo
 
 
 class FedShapley(server_base.FedServer):
     def __init__(self, client_list, model_name, dataset_info: DataSetInfo, use_monte_carlo=False,
-                 monte_carlo_samples=120):
+                 monte_carlo_samples=120, random_seed=None):
         super().__init__(client_list, model_name, dataset_info)
         self.client_states = {}
         self.client_data_sizes = {}
         self.client_losses = {}
         self.use_monte_carlo = use_monte_carlo  # 开关控制是否使用蒙特卡洛方法
         self.monte_carlo_samples = monte_carlo_samples  # 蒙特卡洛采样数
+
+        # 初始化随机种子，确保实验可复现
+        self.random_seed = random_seed
+        if self.random_seed is not None:
+            random.seed(self.random_seed)
+            np.random.seed(self.random_seed)
 
     def agg(self):
         # 计算所有客户端的夏普利值
@@ -54,8 +61,9 @@ class FedShapley(server_base.FedServer):
         shapley_values = {client: 0 for client in clients}
 
         if self.use_monte_carlo:
-            # 蒙特卡洛方法计算夏普利值
+            # 蒙特卡洛方法计算夏普利值 - 使用固定种子确保结果可复现
             for _ in range(self.monte_carlo_samples):
+                # 使用固定种子控制的随机采样
                 permutation = random.sample(clients, n_clients)
                 subset = set()
                 for client in permutation:
@@ -67,7 +75,7 @@ class FedShapley(server_base.FedServer):
             for client in shapley_values.keys():
                 shapley_values[client] /= self.monte_carlo_samples
         else:
-            # 原始精确计算方法
+            # 原始精确计算方法（确定性，天然可复现）
             for subset_size in range(n_clients + 1):
                 for subset in itertools.combinations(clients, subset_size):
                     subset = set(subset)
