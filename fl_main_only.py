@@ -139,8 +139,8 @@ def fed_run():
         fed_server = FedNovaServer(trainset_config['users'], model_name=config["system"]["model"],
                                                dataset_info=info)
     elif config["client"]["fed_algo"] == 'FedShapley':
-        fed_server = FedShapley(trainset_config['users'], model_name=config["system"]["model"],
-                                monte_carlo_samples=150,dataset_info=info)
+        fed_server = FedShapley(trainset_config['users'], model_name=config["system"]["model"],use_monte_carlo=True,
+                                monte_carlo_samples=2000,dataset_info=info)
     fed_server.load_testset(testset)
     global_state_dict = fed_server.state_dict()
 

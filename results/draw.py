@@ -129,58 +129,104 @@ def parse_filename(filename):
     return None, None
 
 
-def plot_metric(data_dict, metric, figsize=(12, 7), output_dir='metric_plots',
-                show=False, vector_formats=['svg', 'pdf'], dpi=300):
+def plot_metric(data_dict, metric, use_meta_info=False, figsize=(12, 7),
+                output_dir='metric_plots', show=False, vector_formats=['svg', 'pdf'], dpi=300):
+    """
+    绘制指标对比图
+
+    参数:
+        data_dict: 包含数据的字典
+        metric: 要绘制的指标
+        use_meta_info: 是否使用文件元信息(信任度和算法)进行分组对比
+        figsize: 图表大小
+        output_dir: 输出目录
+        show: 是否显示图表
+        vector_formats: 矢量图格式列表
+        dpi: 图像分辨率
+    """
     fig, ax = plt.subplots(figsize=figsize)
     metric_name = get_metric_display_name(metric)
     metric_unit = get_metric_unit(metric)
     max_x = 0
 
-    # 按信任度和算法分组
-    groups = {}
-    for filename in data_dict:
-        trust, algorithm = parse_filename(filename)
-        if trust not in groups:
-            groups[trust] = {}
-        groups[trust][algorithm] = data_dict[filename]
+    if use_meta_info:
+        # 按信任度和算法分组
+        groups = {}
+        for filename in data_dict:
+            trust, algorithm = parse_filename(filename)
+            if trust not in groups:
+                groups[trust] = {}
+            groups[trust][algorithm] = data_dict[filename]
 
-    # 为每个信任度分配基础颜色
-    trust_list = sorted(groups.keys(), key=lambda x: TRUST_LEVELS[x], reverse=True)
-    color_map = {trust: PROFESSIONAL_COLORS[i] for i, trust in enumerate(trust_list)}
+        # 为每个信任度分配基础颜色
+        trust_list = sorted(groups.keys(), key=lambda x: TRUST_LEVELS[x], reverse=True)
+        color_map = {trust: PROFESSIONAL_COLORS[i] for i, trust in enumerate(trust_list)}
 
-    # 绘制所有曲线
-    for trust in trust_list:
-        algorithms = groups[trust]
-        base_color = color_map[trust]
-        # 调整颜色深浅
-        color = mcolors.to_rgb(base_color)
-        color = tuple(c * TRUST_LEVELS[trust] for c in color)
+        # 绘制所有曲线
+        for trust in trust_list:
+            algorithms = groups[trust]
+            base_color = color_map[trust]
+            # 调整颜色深浅
+            color = mcolors.to_rgb(base_color)
+            color = tuple(c * TRUST_LEVELS[trust] for c in color)
 
-        for algorithm in algorithms:
-            if metric not in algorithms[algorithm]:
+            for algorithm in algorithms:
+                if metric not in algorithms[algorithm]:
+                    continue
+                values = np.array(algorithms[algorithm][metric])
+                x = np.arange(1, len(values) + 1)
+                max_x = max(max_x, len(x))
+
+                # 平滑曲线
+                smooth_vals = smooth_curve(values)
+
+                # 获取线型和标记
+                line_style, marker = ALGORITHM_STYLES.get(algorithm, ('-', 'o'))
+
+                # 绘制曲线
+                ax.plot(
+                    x, smooth_vals,
+                    label=f'{trust}-{algorithm}',
+                    color=color,
+                    linestyle=line_style,
+                    linewidth=2,
+                    marker=marker,
+                    markersize=4,
+                    markevery=max(1, len(x) // 20),
+                    alpha=0.9
+                )
+    else:
+        # 不使用元信息，直接按文件名绘制
+        color_index = 0
+        for filename, data in data_dict.items():
+            if metric not in data:
                 continue
-            values = np.array(algorithms[algorithm][metric])
+
+            values = np.array(data[metric])
             x = np.arange(1, len(values) + 1)
             max_x = max(max_x, len(x))
 
             # 平滑曲线
             smooth_vals = smooth_curve(values)
 
-            # 获取线型和标记
-            line_style, marker = ALGORITHM_STYLES.get(algorithm, ('-', 'o'))
+            # 获取颜色和样式
+            color = PROFESSIONAL_COLORS[color_index % len(PROFESSIONAL_COLORS)]
+            line_style, marker = ALGORITHM_STYLES[list(ALGORITHM_STYLES.keys())[color_index % len(ALGORITHM_STYLES)]]
 
-            # 绘制曲线（减小标记大小，调整线条粗细）
+            # 绘制曲线
             ax.plot(
                 x, smooth_vals,
-                label=f'{trust}-{algorithm}',
+                label=filename,
                 color=color,
                 linestyle=line_style,
-                linewidth=2,  # 线条粗细适中
+                linewidth=2,
                 marker=marker,
-                markersize=4,  # 标记大小减小（原6→4）
-                markevery=max(1, len(x) // 20),  # 稀疏显示标记（避免过于密集）
+                markersize=4,
+                markevery=max(1, len(x) // 20),
                 alpha=0.9
             )
+
+            color_index += 1
 
     # 坐标轴设置
     ax.set_title(f'{metric_name} Comparison', fontsize=16, pad=15)
@@ -211,6 +257,11 @@ def plot_metric(data_dict, metric, figsize=(12, 7), output_dir='metric_plots',
 
 
 def main():
+    # 配置参数 - 在这里修改参数值
+    use_meta_info = False  # 是否使用文件元信息进行对比，默认关闭
+    show_plots = False  # 是否显示图表
+    output_dir = 'metric_plots'  # 图表输出目录
+
     json_files = [f for f in os.listdir('.') if f.endswith('.json')]
     if not json_files:
         print("No JSON files found.")
@@ -227,7 +278,13 @@ def main():
 
     for metric in metrics:
         try:
-            plot_metric(data_dict, metric)
+            plot_metric(
+                data_dict,
+                metric,
+                use_meta_info=use_meta_info,
+                output_dir=output_dir,
+                show=show_plots
+            )
         except Exception as e:
             print(f"Error plotting {metric}: {str(e)}")
 
