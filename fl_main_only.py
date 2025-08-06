@@ -21,7 +21,7 @@ from fed_baselines.server_fednova import FedNovaServer
 from fed_baselines.server_scaffold import ScaffoldServer
 from fed_baselines.server_shapley import FedShapley
 from postprocessing.recorder import Recorder
-from preprocessing.fed_dataloader import divide_data
+from preprocessing.fed_dataloader import UniversalDataLoader
 
 json_types = (list, dict, str, int, float, bool, type(None))
 
@@ -90,6 +90,8 @@ def fed_run():
         'f1': [],
         'loss': []
     }
+
+
 
     trainset_config, testset, info = divide_data(root='../data',
                                                  num_client=config["system"]["num_client"],
