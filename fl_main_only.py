@@ -21,7 +21,7 @@ from fed_baselines.server_fednova import FedNovaServer
 from fed_baselines.server_scaffold import ScaffoldServer
 from fed_baselines.server_shapley import FedShapley
 from postprocessing.recorder import Recorder
-from preprocessing.fed_dataloader import divide_data
+from preprocessing.fed_dataloader import UniversalDataLoader
 
 json_types = (list, dict, str, int, float, bool, type(None))
 
@@ -91,11 +91,14 @@ def fed_run():
         'loss': []
     }
 
-    trainset_config, testset, info = divide_data(root='../data',
+    data_loader = UniversalDataLoader(root='../data',
                                                  num_client=config["system"]["num_client"],
                                                  num_local_class=config["system"]["num_local_class"],
                                                  dataset_name=config["system"]["dataset"],
-                                                 i_seed=config["system"]["i_seed"])
+                                                 seed=config["system"]["i_seed"])
+    data_loader.load()
+
+    trainset_config, testset = data_loader.divide()
 
 
     max_acc = 0
@@ -104,43 +107,43 @@ def fed_run():
         if config["client"]["fed_algo"] == 'FedAvg':
             client_dict[client_id] = FedClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                               dataset_info=data_loader)
         elif config["client"]["fed_algo"] == 'SCAFFOLD':
             client_dict[client_id] = ScaffoldClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                     model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                               dataset_info=data_loader)
         elif config["client"]["fed_algo"] == 'FedProx':
             client_dict[client_id] = FedProxClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                    model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                               dataset_info=data_loader)
         elif config["client"]["fed_algo"] == 'FedNova':
             client_dict[client_id] = FedNovaClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                    model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                               dataset_info=data_loader)
         elif config["client"]["fed_algo"] == 'FedShapley':
             client_dict[client_id] = FedClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                               dataset_info=data_loader)
         # print(trainset_config['user_data'][client_id])
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # 根据联邦学习算法和特定的联邦设置初始化服务器
     if config["client"]["fed_algo"] == 'FedAvg':
         fed_server = FedServer(trainset_config['users'], model_name=config["system"]["model"],
-                               dataset_info=info)
+                               dataset_info=data_loader)
     elif config["client"]["fed_algo"] == 'SCAFFOLD':
         fed_server = ScaffoldServer(trainset_config['users'], model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                               dataset_info=data_loader)
         scv_state = fed_server.scv.state_dict()
     elif config["client"]["fed_algo"] == 'FedProx':
         fed_server = FedServer(trainset_config['users'], model_name=config["system"]["model"],
-                               dataset_info=info)
+                               dataset_info=data_loader)
     elif config["client"]["fed_algo"] == 'FedNova':
         fed_server = FedNovaServer(trainset_config['users'], model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                               dataset_info=data_loader)
     elif config["client"]["fed_algo"] == 'FedShapley':
         fed_server = FedShapley(trainset_config['users'], model_name=config["system"]["model"],use_monte_carlo=True,
-                                monte_carlo_samples=2000,dataset_info=info)
+                                monte_carlo_samples=2000,dataset_info=data_loader)
     fed_server.load_testset(testset)
     global_state_dict = fed_server.state_dict()
 
