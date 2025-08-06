@@ -4,11 +4,11 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from fed_baselines.client_base import FedClient
-from preprocessing.fed_dataloader import DataSetInfo
+from preprocessing.fed_dataloader import UniversalDataLoader
 
 
 class FedDPClient(FedClient):
-    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo, testset=None,
+    def __init__(self, name, epoch, model_name, dataset_info: UniversalDataLoader, testset=None,
                  # 差分隐私参数
                  dp_epsilon=1.0, dp_alpha=0.1, delta=1e-5, sensitivity=1.0,
                  # 对抗训练参数
