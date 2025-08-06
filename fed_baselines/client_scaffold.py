@@ -3,13 +3,13 @@ import copy
 from torch.utils.data import DataLoader
 
 from fed_baselines.client_base import FedClient
-from preprocessing.fed_dataloader import DataSetInfo
+from preprocessing.fed_dataloader import UniversalDataLoader
 from utils.fed_utils import init_model
 from utils.models import *
 
 
 class ScaffoldClient(FedClient):
-    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo):
+    def __init__(self, name, epoch, model_name, dataset_info: UniversalDataLoader):
         super().__init__(name, epoch, model_name, dataset_info)
         # 服务器控制变量
         self.scv = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
