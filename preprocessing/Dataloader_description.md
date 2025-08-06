@@ -1,221 +1,231 @@
-# 联邦学习数据预处理模块(Pro)使用说明
+# UniversalDataLoader 文档
 
-## 主要功能
+## 1. 代码用途
 
-该模块提供联邦学习场景下的数据集预处理功能，支持将集中式数据集划分为多个客户端本地数据集，并可对指定客户端应用多种不可信策略（如数据稀疏、特征噪声、类别倾斜、恶意标签篡改等），最终生成适用于联邦学习训练的客户端数据配置。
+`UniversalDataLoader` 是一个专为联邦学习场景设计的通用数据集加载与处理工具类，主要功能如下：
 
-## 核心外函数
+- 支持多种主流公开数据集（如MNIST、CIFAR10/100、FashionMNIST等）的自动加载与处理
+- 兼容自定义数据集，只需按照特定目录结构组织数据
+- 提供完整的数据预处理流程，包括尺寸调整、通道转换、归一化等
+- 支持数据增强，可配置旋转、平移、缩放、翻转等增强操作
+- 实现联邦学习中数据集的智能划分，将数据分配给多个客户端
+- 支持多种客户端数据分布策略，如数据稀疏、类别倾斜、特征噪声、恶意标签等，可模拟不同的联邦学习场景
+- 提供数据统计计算、结果保存、加载验证等辅助功能
 
-### 1. divide_data（核心函数）
+该类的设计目标是简化联邦学习实验中的数据准备工作，支持快速构建多样化的联邦学习数据场景。
 
+## 2. 参数说明
 
+### 2.1 核心参数
 
+| 参数名 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `dataset_name` | str | 'MNIST' | 数据集名称，可为内置数据集（如'MNIST'）或自定义数据集目录名 |
+| `num_client` | int | 1 | 客户端数量 |
+| `num_local_class` | int | 10 | 每个客户端分配的类别数量 |
+| `untrusted_strategies` | Optional[List[float]] | None | 客户端数据策略列表，用于指定各客户端的数据分布特性 |
+| `k` | int | 1 | 类别分配步长，用于客户端类别分配算法 |
+| `print_report` | bool | True | 是否打印数据集划分报告 |
+| `device` | Optional[torch.device] | None | 数据加载设备，默认自动检测（优先GPU） |
+| `preload_to_gpu` | bool | False | 是否将数据预加载到GPU内存 |
+| `seed` | int | 0 | 随机种子，确保实验可重复性 |
+| `root` | str | './data' | 数据存储根目录 |
+| `download` | bool | True | 是否自动下载数据集（仅对内置数据集有效） |
+| `cut` | Optional[float] | None | 数据裁剪比例（0-1之间），用于减少数据集规模 |
+| `save` | bool | False | 是否保存处理后的数据集 |
+| `subset` | Optional[Tuple[str, Union[int, float]]] | None | 类别子集选择参数，格式为(类型, 值)，如('top', 5)表示选择前5类 |
+| `size` | Optional[Union[int, Tuple[int, int]]] | None | 图像尺寸，可指定整数（如32表示32x32）或元组（如(32, 64)） |
+| `in_channels` | Optional[int] | None | 输入图像通道数，自动检测或手动指定（1为灰度，3为RGB） |
+| `augmentation` | bool | False | 是否启用数据增强 |
+| `augmentation_params` | Optional[Dict[str, Any]] | None | 数据增强参数配置 |
+
+### 2.2 数据增强参数（`augmentation_params`）
+
+默认参数配置：
 ```python
-def divide_data(
-
-   num_client=1,              # 客户端数量
-
-   num_local_class=10,        # 每个客户端拥有的本地类别数
-
-   dataset_name='emnist',     # 数据集名称（支持MNIST、CIFAR10等）
-
-   i_seed=0,                  # 随机种子，保证结果可复现
-
-   untrusted_strategies=None, # 不可信策略列表，每个元素对应一个客户端
-
-   k=1,                       # 类别分配偏移参数
-
-   print_report=True,         # 是否打印数据分布报告
-
-   device=None,               # 计算设备（CPU/GPU）
-
-   preload_to_gpu=False,      # 是否预加载数据到GPU
-
-   load_path=None             # 自定义数据集路径（非默认数据集时使用）
-
-):
-    pass
+{
+    'rotation': 15,        # 旋转角度范围（-15到15度）
+    'translation': 0.1,    # 平移比例（相对于图像尺寸）
+    'scale': 0.1,          # 缩放比例（0.9到1.1倍）
+    'flip': True           # 是否启用水平翻转
+}
 ```
 
-**功能**：将原始数据集划分给多个客户端，支持应用不可信策略，返回训练集配置和测试集。
+### 2.3 客户端策略参数（`untrusted_strategies`）
 
-**返回值**：
+策略值为浮点数，整数部分表示策略类型，小数部分表示策略参数：
+- `0.x`：恶意客户端策略（标签翻转），x表示标签准确率（1-x为翻转比例）
+- `2.x`：稀疏数据策略，x表示数据保留比例
+- `3.x`：特征噪声策略，x表示噪声强度
+- `4.x`：类别倾斜策略，x表示倾斜程度
+- 其他值：默认策略（均匀分布）
 
+## 3. 主要方法
 
+| 方法名 | 功能描述 |
+|--------|----------|
+| `__init__` | 初始化参数设置，配置数据集和联邦学习相关参数 |
+| `load()` | 加载数据集，执行数据预处理，返回自身实例 |
+| `divide()` | 划分联邦数据集，为每个客户端分配数据，返回数据集配置和测试集 |
+| `calculate_statistics()` | 计算数据集的均值和标准差，用于数据归一化 |
+| `get_test_loader()` | 获取测试集的数据加载器（DataLoader） |
+| `set_seed()` | 设置随机种子，确保实验可重复性 |
 
-*   `trainset_config`: 包含客户端列表、客户端数据和样本总数的字典
+## 4. 客户端类（Client）
 
-*   `testset`: 测试数据集
+`Client`类是`UniversalDataLoader`的内部类，代表联邦学习中的一个客户端，主要方法包括：
 
-### 2. verify_loader
+| 方法名 | 功能描述 |
+|--------|----------|
+| `get_data_loader()` | 获取客户端数据的数据加载器 |
+| `calculate_label_accuracy()` | 计算标签准确率（主要用于恶意客户端） |
+| `print_distribution()` | 打印客户端的数据分布情况 |
+| `verify_loader()` | 验证客户端数据加载器的正确性 |
+| `__len__` | 返回客户端数据样本数量 |
+| `__getitem__` | 获取客户端的一个数据样本 |
 
+## 5. 使用方法
 
+### 5.1 基本使用流程
 
-```python
-def verify_loader(client_data, client_id, device):
-    pass
-```
+1. 创建`UniversalDataLoader`实例并配置参数
+2. 调用`load()`方法加载数据集
+3. 调用`divide()`方法划分联邦数据集
+4. 通过返回的客户端数据进行联邦学习实验
 
-**功能**：验证指定客户端的数据加载器是否正常工作，检查数据和标签的一致性。
+## 6. 使用实例
 
-### 3. 辅助函数
-
-
-
-*   `load_data`: 加载指定数据集（支持默认数据集和自定义数据集）
-
-*   `parse_strategy`: 解析策略代码，将数字代码转换为具体策略名称和参数
-
-*   `apply_strategy`: 对客户端数据集应用指定的不可信策略
-
-*   `print_distribution`: 打印客户端数据集的类别分布情况
-
-*   `calculate_accuracy`: 计算策略应用后的标签准确率
-
-## 不可信策略说明
-
-通过`untrusted_strategies`列表指定，每个元素为一个浮点数，格式为`整数部分.小数部分`：
-
-
-
-*   0.x: 恶意策略（标签篡改），小数部分表示标签准确率
-
-*   2.x: 数据稀疏策略，小数部分表示保留样本比例
-
-*   3.x: 特征噪声策略，小数部分表示添加噪声的样本比例
-
-*   4.x: 类别倾斜策略，小数部分表示倾斜程度
-
-*   1.0: 正常策略（无任何篡改）
-
-## 使用示例
-
-### 基础用法（无不可信策略）
-
-
+### 6.1 基础用法：加载MNIST并划分为5个客户端
 
 ```python
-from preprocessing.fed_dataloader import divide_data, verify_loader
-import torch
-# 加载设备
+from fed_dataloader import UniversalDataLoader
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-# 将MNIST数据集划分为5个客户端，每个客户端包含2个类别
-
-trainset_config, testset = divide_data(
-
-   num_client=5,
-
-   num_local_class=2,
-
-   dataset_name='MNIST',
-
-   i_seed=0,
-
-   device=device
-
+# 初始化数据加载器
+loader = UniversalDataLoader(
+    dataset_name='MNIST',
+    num_client=5,          # 5个客户端
+    num_local_class=2,     # 每个客户端分配2个类别
+    root='../data',        # 数据存储目录
+    seed=0,                # 随机种子
+    in_channels=1,         # 输入通道数（MNIST为灰度图，1通道）
+    size=32,               # 图像尺寸调整为32x32
+    augmentation=True      # 启用数据增强
 )
 
-# 验证第1个客户端的数据加载器
+# 加载数据集
+loader.load()
 
-verify_loader(trainset_config['user_data'], 'f_00000', device)
+# 划分联邦数据集
+trainset_config, testset = loader.divide()
+
+# 查看数据集信息
+print(f"客户端列表: {trainset_config['users']}")
+print(f"总样本数: {trainset_config['num_samples']}")
+print(f"测试集样本数: {len(testset)}")
+
+# 获取第一个客户端的数据加载器
+client_id = trainset_config['users'][0]
+client_loader = trainset_config['user_data'][client_id].get_data_loader(batch_size=32)
 ```
 
-### 含不可信策略的用法
-
-
+### 6.2 高级用法：使用多种客户端策略
 
 ```python
-from preprocessing.fed_dataloader import divide_data, verify_loader
-import torch
-# 为5个客户端分别指定不同策略
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-trainset_config, testset = divide_data(
-
-   num_client=5,
-
-   num_local_class=2,
-
-   dataset_name='MNIST',
-
-   i_seed=0,
-
-   # 策略列表：依次对应5个客户端
-
-   untrusted_strategies=[2.1,  # 客户端0：数据稀疏（保留10%样本）
-
-                         3.5,  # 客户端1：特征噪声（50%样本添加噪声）
-
-                         4.3,  # 客户端2：类别倾斜（倾斜程度30%）
-
-                         0.5,  # 客户端3：恶意策略（标签准确率50%）
-
-                         1.0], # 客户端4：正常策略
-
-   device=device,
-
-   preload_to_gpu=False
-
+# 初始化数据加载器，配置不同客户端策略
+loader = UniversalDataLoader(
+    dataset_name='CIFAR10',
+    num_client=5,
+    num_local_class=3,
+    # 客户端策略：稀疏、特征噪声、类别倾斜、恶意、正常
+    untrusted_strategies=[2.1, 3.5, 4.3, 0.5, 1.0],
+    root='../data',
+    device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+    preload_to_gpu=False,
+    in_channels=3,
+    size=32,
+    augmentation=True
 )
 
-# 验证所有客户端
+# 加载并划分数据集
+loader.load()
+trainset_config, testset = loader.divide()
 
-for i in range(5):
-
-   verify_loader(trainset_config['user_data'], f'f_0000{i}', device)
+# 验证前3个客户端的加载器
+for i in range(3):
+    client = trainset_config['user_data'][f"f_0000{i}"]
+    client.verify_loader()  # 验证加载器并打印信息
 ```
 
-### 加载自定义数据集
+### 6.3 自定义数据集用法
 
 ```python
-import torch
-
-from preprocessing.fed_dataloader import divide_data
-
-# 加载设备
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-trainset_config, testset = divide_data(
-
-    num_client=3,
-
+# 加载自定义数据集
+loader = UniversalDataLoader(
+    dataset_name='my_dataset',  # 自定义数据集目录名
+    num_client=4,
     num_local_class=5,
-
-    dataset_name='custom',  # 自定义数据集
-
-    untrusted_strategies=[2.3, 3.7, 1.0],
-
-    device=device
-
+    root='../custom_data',      # 自定义数据根目录
+    subset=('random', 10),      # 随机选择10个类别
+    cut=0.8,                    # 只使用80%的数据
+    size=(224, 224),            # 调整图像尺寸为224x224
+    in_channels=3,              # RGB图像，3通道
+    save=True,                  # 保存处理后的数据集
+    seed=42
 )
+
+# 加载并划分数据集
+loader.load()
+trainset_config, testset = loader.divide()
+
+# 计算数据集统计信息
+mean, std = loader.calculate_statistics()
+print(f"数据集均值: {mean}")
+print(f"数据集标准差: {std}")
 ```
 
-## 策略说明
+## 7. 注意事项
 
+1. **数据集目录结构**：
+   - 内置数据集会自动下载到指定的`root`目录
+   - 自定义数据集需按照以下结构组织：
+     ```
+     root/
+     └── dataset_name/
+         ├── train/
+         │   ├── class1/
+         │   ├── class2/
+         │   └── ...
+         └── val/
+             ├── class1/
+             ├── class2/
+             └── ...
+     ```
 
+2. **设备使用**：
+   - 当`preload_to_gpu=True`时，数据会提前加载到GPU，可加速训练但消耗更多显存
+   - 对于大规模数据集，建议设置`preload_to_gpu=False`，采用按需加载方式
 
-1.  **数据稀疏（2.x）**：参数 x 表示保留样本的比例（如 2.1 表示保留 10% 的样本）
+3. **数据增强**：
+   - 数据增强仅应用于训练集，测试集不进行增强处理
+   - 增强操作在尺寸调整之后、归一化之前执行
 
-2.  **特征噪声（3.x）**：参数 x 表示添加噪声的样本比例（如 3.5 表示 50% 的样本添加高斯噪声和亮度扰动）
+4. **随机种子**：
+   - 类内部已统一设置随机种子，确保实验结果可重复
+   - 不同的`seed`值会导致不同的数据划分结果
 
-3.  **类别倾斜（4.x）**：参数 x 表示倾斜程度，使客户端数据集中于某个主导类别
+5. **性能优化**：
+   - 首次加载数据集时会进行预处理，可能耗时较长
+   - 设置`save=True`可保存处理后的数据集，后续使用时可直接加载，提高效率
 
-4.  **恶意策略（0.x）**：参数 x 表示标签准确率（如 0.5 表示 50% 的标签被恶意篡改）
+6. **类别分配**：
+   - 当`num_local_class`大于总类别数时，会通过取模运算循环分配类别
+   - 客户端之间的类别可能存在重叠
 
-5.  **正常策略（1.0）**：不做任何数据修改
+## 8. 扩展建议
 
-## 注意事项
+1. 如需支持新的公开数据集，可扩展`_load_default_dataset`方法中的`default_datasets`字典
+2. 如需添加新的数据增强方式，可修改`_get_augmentation_transform`方法
+3. 如需自定义客户端数据分配策略，可重写`_assign_classes_to_clients`和`_create_clients`方法
+4. 如需添加新的客户端策略，可扩展`parse_strategy`方法和`apply_strategy`方法
 
-
-
-1.  客户端 ID 格式为`f_00000`、`f_00001`等，依次对应`untrusted_strategies`列表中的元素
-
-2.  支持的默认数据集包括：MNIST、CIFAR10、FashionMNIST、CIFAR100
-
-3.  自定义数据集需按照 ImageFolder 格式组织，包含 train 和 val 两个子目录
-
-4.  使用 GPU 时，建议将`preload_to_gpu`设为 False，采用动态加载方式节省内存
-
-5.  随机种子`i_seed`用于保证数据划分结果的可复现性
-
-6.  通过调整`num_local_class`参数可以控制每个客户端拥有的类别数量，影响数据异构性
+通过灵活配置`UniversalDataLoader`的各项参数，可以快速构建不同的数据分布场景，满足联邦学习算法的测试与验证需求。

@@ -4,12 +4,12 @@ import copy
 from torch.utils.data import DataLoader
 
 from fed_baselines.client_base import FedClient
-from preprocessing.fed_dataloader import DataSetInfo
+from preprocessing.fed_dataloader import UniversalDataLoader
 from utils.models import *
 
 
 class FedNovaClient(FedClient):
-    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo):
+    def __init__(self, name, epoch, model_name, dataset_info: UniversalDataLoader):
         """
         初始化 FedNova 客户端。
 
