@@ -1,14 +1,14 @@
 system:
-  num_client: 10
-  num_local_class: 4
-  dataset: "dt"
+  num_client: 1
+  num_local_class: 10
+  dataset: "MNIST"
   model: "ResNet18"
   i_seed: 235235
   num_round: 20
   res_root: "results"
 
 client:
-  fed_algo: "FedAvg"
+  fed_algo: "FedDp"
   lr: 0.01
   batch_size: 8
   num_local_epoch: 3

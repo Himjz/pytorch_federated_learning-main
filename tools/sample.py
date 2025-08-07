@@ -94,8 +94,8 @@ if __name__ == "__main__":
     # 设置参数
     ORIGINAL_DIR = "dt1"  # 原始数据集路径（应包含train/val/test子目录）
     TARGET_DIR = "dt2"  # 目标数据集路径
-    TRAIN_RATIO = 0.3  # 训练集抽样比例
-    VAL_RATIO = 0.3  # 验证集抽样比例
+    TRAIN_RATIO = 0.3 # 训练集抽样比例
+    VAL_RATIO = 0.3 # 验证集抽样比例
     SEED = 235235  # 随机种子
 
     # 执行抽样和复制
