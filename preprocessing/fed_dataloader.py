@@ -66,7 +66,8 @@ class UniversalDataLoader(Dataset):
         self.num_classes = 0
         self.original_trainset = None
         self.original_testset = None
-        self.selected_classes = None
+        self.selected_classes = None  # 类别名称列表
+        self.class_to_idx = {}  # 类别名称到索引的映射
 
         # 状态标记
         self.is_loaded = False
@@ -122,6 +123,28 @@ class UniversalDataLoader(Dataset):
         else:
             self._load_custom_dataset(transform_list, auto_detect_size)
 
+        # 确保selected_classes和class_to_idx有值
+        if self.selected_classes is None:
+            if hasattr(self.original_trainset, 'classes'):
+                self.selected_classes = self.original_trainset.classes
+                self.class_to_idx = self.original_trainset.class_to_idx
+            elif self.num_classes > 0:
+                self.selected_classes = list(range(self.num_classes))
+                self.class_to_idx = {str(i): i for i in range(self.num_classes)}
+            else:
+                # 如果无法确定，尝试从训练集中推断
+                unique_labels = torch.unique(self.base_labels).tolist()
+                self.selected_classes = unique_labels
+                self.class_to_idx = {str(lbl): lbl for lbl in unique_labels}
+
+        # 验证是否有可用样本
+        if self.base_labels is not None and len(self.base_labels) > 0:
+            unique_labels = torch.unique(self.base_labels).tolist()
+            print(f"数据集中的唯一标签: {unique_labels}")
+            print(f"类别到索引的映射: {self.class_to_idx}")
+        else:
+            print("警告: 未检测到任何样本标签")
+
         self.is_loaded = True
         print(f"数据集 {self.dataset_name} 加载完成")
         return self
@@ -130,6 +153,22 @@ class UniversalDataLoader(Dataset):
         """划分联邦数据集，创建客户端"""
         if not self.is_loaded:
             raise RuntimeError("请先调用load()方法加载数据集")
+
+        # 检查是否有样本
+        if self.base_labels is None or len(self.base_labels) == 0:
+            raise RuntimeError("数据集中没有样本，请检查数据集加载是否正确")
+
+        # 检查类别映射是否有效
+        if not self.class_to_idx:
+            raise RuntimeError("类别到索引的映射为空，请检查数据集")
+
+        # 额外检查selected_classes是否有效
+        if self.selected_classes is None or len(self.selected_classes) == 0:
+            # 尝试从数据中推断类别
+            unique_labels = torch.unique(self.base_labels).tolist()
+            self.selected_classes = unique_labels
+            if len(self.selected_classes) == 0:
+                raise ValueError("无法确定数据集的类别，请检查数据加载是否正确")
 
         if self.is_divided:
             print("数据集已划分，无需重复划分")
@@ -147,6 +186,30 @@ class UniversalDataLoader(Dataset):
         # 按类别分组索引
         class_indices = self._group_indices_by_class()
 
+        # 检查是否有可用的类别和样本
+        valid_classes = [cls for cls, indices in class_indices.items() if len(indices) > 0]
+        if not valid_classes:
+            # 尝试直接使用标签值作为类别（对于标签不是从0开始的情况）
+            print("尝试使用标签值作为类别重新分组...")
+            alternative_class_indices = defaultdict(list)
+            for idx in range(len(self.base_labels)):
+                lbl = self._to_numpy_label(self.base_labels[idx])
+                alternative_class_indices[lbl].append(idx)
+
+            valid_classes = [cls for cls, indices in alternative_class_indices.items() if len(indices) > 0]
+            if valid_classes:
+                class_indices = alternative_class_indices
+                self.selected_classes = valid_classes
+                print(f"使用标签值作为类别: {valid_classes}")
+            else:
+                raise RuntimeError("没有可用的样本分配给客户端，请检查数据集")
+
+        # 确保每个客户端分配的类别数不超过可用类别数
+        adjusted_num_local_class = min(self.num_local_class, len(valid_classes))
+        if adjusted_num_local_class != self.num_local_class:
+            print(f"警告: 可用类别数少于请求的每个客户端类别数，已调整为 {adjusted_num_local_class}")
+            self.num_local_class = adjusted_num_local_class
+
         # 为每个客户端分配类别
         client_classes = self._assign_classes_to_clients()
 
@@ -156,12 +219,21 @@ class UniversalDataLoader(Dataset):
         # 创建客户端
         self._create_clients(client_classes, class_indices, class_assign_counts)
 
+        # 检查是否有客户端被创建
+        if not self.clients:
+            # 尝试最后一种分配方式：平均分配所有样本
+            print("尝试使用备用策略分配样本...")
+            self._fallback_client_creation(class_indices)
+
+            if not self.clients:
+                raise RuntimeError("未能创建任何客户端，请检查数据分配逻辑")
+
         self.is_divided = True
 
         if self.print_report:
             self._print_report()
 
-        print(f"数据集 {self.dataset_name} 已划分为 {self.num_client} 个客户端")
+        print(f"数据集 {self.dataset_name} 已划分为 {len(self.clients)} 个客户端 (请求的数量: {self.num_client})")
 
         # 根据create参数返回不同结果
         if create:
@@ -172,6 +244,51 @@ class UniversalDataLoader(Dataset):
                 'user_data': self.clients,
                 'num_samples': sum(len(client) for client in self.clients.values())
             }, self.testset
+
+    def _fallback_client_creation(self, class_indices: Dict[int, List[int]]) -> None:
+        """备用的客户端创建策略：将所有样本平均分配给客户端"""
+        # 收集所有样本索引
+        all_indices = []
+        for indices in class_indices.values():
+            all_indices.extend(indices)
+
+        if not all_indices:
+            return
+
+        # 打乱所有样本
+        random.shuffle(all_indices)
+
+        # 平均分配给客户端
+        samples_per_client = max(1, len(all_indices) // self.num_client)
+
+        for i in range(self.num_client):
+            start_idx = i * samples_per_client
+            end_idx = start_idx + samples_per_client if i < self.num_client - 1 else len(all_indices)
+            client_indices = all_indices[start_idx:end_idx]
+
+            if not client_indices:
+                continue
+
+            # 确定此客户端包含的类别
+            client_labels = set()
+            for idx in client_indices:
+                cls = self._to_numpy_label(self.base_labels[idx])
+                client_labels.add(cls)
+
+            strategy = 'normal'
+            ratio = 1.0
+            if self.untrusted_strategies and i < len(self.untrusted_strategies):
+                strategy, ratio = self.parse_strategy(self.untrusted_strategies[i])
+
+            self.clients[f'f_{i:05d}'] = Client(
+                client_id=f'f_{i:05d}',
+                dataset=self,
+                indices=client_indices,
+                assigned_classes=list(client_labels),
+                strategy=strategy,
+                strategy_ratio=ratio,
+                device=self.device
+            )
 
     def _get_augmentation_transform(self) -> List[transforms.transforms]:
         """获取数据增强转换"""
@@ -230,6 +347,12 @@ class UniversalDataLoader(Dataset):
         full_testset = dataset_cls(root=self.root, train=False, download=self.download, transform=base_transform)
         self.original_trainset, self.original_testset = full_trainset, full_testset
 
+        # 保存类别映射
+        self.class_to_idx = {str(i): i for i in range(self.num_classes)}
+        if hasattr(full_trainset, 'classes'):
+            self.selected_classes = full_trainset.classes
+            self.class_to_idx = full_trainset.class_to_idx
+
         # 应用类别筛选
         trainset, testset = self._apply_class_subset(full_trainset, full_testset)
 
@@ -267,9 +390,18 @@ class UniversalDataLoader(Dataset):
             raise ValueError(f"数据集目录不存在: {dataset_root}")
 
         original_train_dir = os.path.join(dataset_root, 'train')
+        if not os.path.exists(original_train_dir):
+            raise ValueError(f"训练集目录不存在: {original_train_dir}")
+
+        # 获取所有类别文件夹
         all_classes = sorted([cls for cls in os.listdir(original_train_dir)
                               if os.path.isdir(os.path.join(original_train_dir, cls))])
+
+        if not all_classes:
+            raise ValueError(f"在 {original_train_dir} 中未找到任何类别文件夹")
+
         self.num_classes = len(all_classes)
+        print(f"发现 {self.num_classes} 个类别: {all_classes}")
 
         # 应用类别筛选
         selected_classes = all_classes
@@ -280,10 +412,22 @@ class UniversalDataLoader(Dataset):
 
             if len(self.selected_classes) < 1:
                 raise ValueError(f"选择的类别数小于1，当前数量: {len(self.selected_classes)}")
+        else:
+            # 当没有subset参数时，确保selected_classes被正确初始化
+            self.selected_classes = all_classes
+
+        # 创建类别到索引的映射
+        self.class_to_idx = {cls: i for i, cls in enumerate(selected_classes)}
+        print(f"类别到索引的映射: {self.class_to_idx}")
 
         # 处理尺寸和转换
         temp_transform = transforms.Compose([transforms.ToTensor()])
         temp_dataset = torchvision.datasets.ImageFolder(root=original_train_dir, transform=temp_transform)
+
+        # 验证临时数据集是否有样本
+        if len(temp_dataset) == 0:
+            raise ValueError(f"在 {original_train_dir} 中未找到任何图像文件")
+        print(f"临时数据集加载成功，包含 {len(temp_dataset)} 个样本")
 
         # 处理尺寸
         transform_list = self._handle_custom_dataset_size(base_transform_list, temp_dataset, auto_detect_size)
@@ -305,29 +449,52 @@ class UniversalDataLoader(Dataset):
         processed_dataset_name = self._get_processed_dataset_name()
         processed_dataset_root = os.path.join(self.root, processed_dataset_name)
 
-        if self.save and not os.path.exists(processed_dataset_root):
+        # 检查是否需要创建处理后的数据集
+        create_processed = self.save and not os.path.exists(processed_dataset_root)
+        if create_processed:
+            print(f"将创建处理后的数据集到: {processed_dataset_root}")
             self._create_processed_custom_dataset(
                 dataset_root, processed_dataset_root,
                 selected_classes, self.cut_ratio,
                 final_transform
             )
+        else:
+            if not os.path.exists(processed_dataset_root):
+                print(f"处理后的数据集不存在，将直接从原始数据集加载: {original_train_dir}")
 
         # 加载最终数据集
-        train_dir = os.path.join(processed_dataset_root, 'train')
-        val_dir = os.path.join(processed_dataset_root, 'val')
+        train_dir = os.path.join(processed_dataset_root, 'train') if create_processed else original_train_dir
+        val_dir = os.path.join(processed_dataset_root, 'val') if create_processed else os.path.join(dataset_root, 'val')
 
-        if not os.path.isdir(train_dir) or not os.path.isdir(val_dir):
-            raise ValueError(f"数据集目录结构不符合要求，需要包含'train'和'val'子目录: {processed_dataset_root}")
+        if not os.path.isdir(train_dir):
+            raise ValueError(f"训练集目录不存在: {train_dir}")
 
+        # 验证训练集目录是否有文件
+        train_files = []
+        for cls in selected_classes:
+            cls_dir = os.path.join(train_dir, cls)
+            if os.path.isdir(cls_dir):
+                train_files.extend([f for f in os.listdir(cls_dir) if os.path.isfile(os.path.join(cls_dir, f))])
+
+        if not train_files:
+            raise ValueError(f"在 {train_dir} 中未找到任何图像文件")
+        print(f"训练集目录包含 {len(train_files)} 个图像文件")
+
+        # 加载训练集和测试集
         trainset = torchvision.datasets.ImageFolder(root=train_dir, transform=final_transform)
-        self.testset = torchvision.datasets.ImageFolder(root=val_dir, transform=final_transform)
+        self.testset = None
+        if os.path.isdir(val_dir):
+            self.testset = torchvision.datasets.ImageFolder(root=val_dir, transform=final_transform)
+            print(f"验证集包含 {len(self.testset)} 个样本")
+        else:
+            print(f"警告: 验证集目录不存在 {val_dir}，将不加载验证集")
 
-        # 处理标签和图像 - 修复张量转换警告
+        # 处理标签和图像
         self.base_images = [trainset[i][0].to(self.device, non_blocking=True) for i in
                             range(len(trainset))] if self.preload_to_gpu else [
             trainset[i][0] for i in range(len(trainset))]
 
-        # 修复自定义数据集标签转换警告
+        # 处理自定义数据集标签
         if isinstance(trainset.targets, torch.Tensor):
             self.base_labels = trainset.targets.detach().clone().to(dtype=torch.int64)
         else:
@@ -336,8 +503,8 @@ class UniversalDataLoader(Dataset):
         self.indices = list(range(len(trainset)))
         self.num_classes = len(trainset.classes)
 
-        print(f"成功加载自定义数据集: {processed_dataset_root}")
-        print(f"训练集样本数: {len(trainset)}, 验证集样本数: {len(self.testset)}")
+        print(f"成功加载自定义数据集: {train_dir}")
+        print(f"训练集样本数: {len(trainset)}, 验证集样本数: {len(self.testset) if self.testset else 0}")
         print(f"图像尺寸: {self.image_size}, 通道数: {self.in_channels}")
         print(f"选择的类别数: {self.num_classes}, 类别列表: {trainset.classes}")
 
@@ -351,7 +518,13 @@ class UniversalDataLoader(Dataset):
         else:
             trainset = full_trainset
             testset = full_testset
-            self.selected_classes = list(range(self.num_classes))
+            # 当没有subset参数时，确保selected_classes被正确初始化
+            if hasattr(full_trainset, 'classes'):
+                self.selected_classes = full_trainset.classes
+                self.class_to_idx = full_trainset.class_to_idx
+            else:
+                self.selected_classes = list(range(self.num_classes))
+                self.class_to_idx = {str(i): i for i in range(self.num_classes)}
 
         if len(self.selected_classes) < 1:
             raise ValueError(f"选择的类别数小于1，当前数量: {len(self.selected_classes)}")
@@ -413,10 +586,9 @@ class UniversalDataLoader(Dataset):
         return transform_list
 
     def _process_labels_and_images(self, trainset: Dataset, testset: Dataset) -> None:
-        """处理标签和图像数据 - 修复所有张量转换警告"""
+        """处理标签和图像数据"""
         # 处理标签
         if hasattr(trainset, 'targets'):
-            # 修复警告：使用detach().clone()代替直接转换
             if isinstance(trainset.targets, torch.Tensor):
                 trainset.targets = trainset.targets.detach().clone().to(dtype=torch.int64)
             else:
@@ -427,7 +599,6 @@ class UniversalDataLoader(Dataset):
             else:
                 testset.targets = torch.tensor(testset.targets, dtype=torch.int64)
         elif hasattr(trainset, 'labels'):
-            # 修复警告：使用detach().clone()代替直接转换
             if isinstance(trainset.labels, torch.Tensor):
                 trainset.targets = trainset.labels.detach().clone().to(dtype=torch.int64)
             else:
@@ -443,7 +614,6 @@ class UniversalDataLoader(Dataset):
             orig_test_targets = self.original_testset.targets if hasattr(self.original_testset,
                                                                          'targets') else self.original_testset.labels
 
-            # 修复警告：使用detach().clone()代替直接转换
             if isinstance(orig_train_targets, torch.Tensor):
                 trainset.targets = orig_train_targets[trainset.indices].detach().clone().to(dtype=torch.int64)
             else:
@@ -454,7 +624,7 @@ class UniversalDataLoader(Dataset):
             else:
                 testset.targets = torch.tensor([orig_test_targets[i] for i in testset.indices], dtype=torch.int64)
 
-        # 加载图像和标签 - 使用non_blocking=True加速GPU传输
+        # 加载图像和标签
         self.base_images = [trainset[i][0].to(self.device, non_blocking=True) for i in
                             range(len(trainset))] if self.preload_to_gpu else [
             trainset[i][0] for i in range(len(trainset))]
@@ -464,29 +634,43 @@ class UniversalDataLoader(Dataset):
 
     def _group_indices_by_class(self) -> Dict[int, List[int]]:
         """按类别分组索引"""
-        class_indices = {cls: [] for cls in self.selected_classes}
+        # 再次检查selected_classes是否有效
+        if self.selected_classes is None:
+            unique_labels = torch.unique(self.base_labels).tolist()
+            self.selected_classes = unique_labels
+
+        # 使用标签值作为键，而不是类别名称
+        class_indices = defaultdict(list)
         for idx in self.indices:
             cls = self._to_numpy_label(self.base_labels[idx])
-            if cls in class_indices:
-                class_indices[cls].append(idx)
+            class_indices[cls].append(idx)
 
         # 打乱每个类别的索引
         for indices in class_indices.values():
             np.random.shuffle(indices)
+
+        # 打印每个类别的样本数量，帮助调试
+        print("\n类别样本分布 (标签值: 样本数):")
+        for cls, indices in class_indices.items():
+            print(f"标签 {cls}: {len(indices)} 个样本")
 
         return class_indices
 
     def _assign_classes_to_clients(self) -> Dict[str, List[int]]:
         """为每个客户端分配类别"""
         client_classes = {}
+        # 获取所有唯一标签值
+        unique_labels = list(torch.unique(self.base_labels).numpy())
+
         for i in range(self.num_client):
-            client_class_indices = [(i * self.k + j) % len(self.selected_classes) for j in range(self.num_local_class)]
-            client_classes[f'f_{i:05d}'] = [self.selected_classes[idx] for idx in client_class_indices]
+            # 从唯一标签中为客户端分配类别
+            client_class_indices = [(i * self.k + j) % len(unique_labels) for j in range(self.num_local_class)]
+            client_classes[f'f_{i:05d}'] = [unique_labels[idx] for idx in client_class_indices]
         return client_classes
 
     def _count_class_assignments(self, client_classes: Dict[str, List[int]]) -> Dict[int, int]:
         """计算每个类别需要分配给多少客户端"""
-        class_assign_counts = {cls: 0 for cls in self.selected_classes}
+        class_assign_counts = defaultdict(int)
         for classes in client_classes.values():
             for cls in classes:
                 class_assign_counts[cls] += 1
@@ -512,7 +696,7 @@ class UniversalDataLoader(Dataset):
             # 收集客户端数据索引
             client_indices = []
             for cls in classes:
-                if class_assign_counts[cls] <= 0 or len(remaining_indices[cls]) == 0:
+                if class_assign_counts[cls] <= 0 or len(remaining_indices.get(cls, [])) == 0:
                     continue
 
                 # 计算每个客户端应分配的样本数
@@ -533,16 +717,34 @@ class UniversalDataLoader(Dataset):
                 remaining_indices[cls] = remaining_indices[cls][per_client:]
                 class_assign_counts[cls] -= 1
 
-            # 创建客户端实例
-            self.clients[client_id] = Client(
-                client_id=client_id,
-                dataset=self,
-                indices=client_indices,
-                assigned_classes=classes,
-                strategy=strategy,
-                strategy_ratio=ratio,
-                device=self.device
-            )
+            # 确保客户端至少有一个样本
+            if len(client_indices) == 0 and len(classes) > 0:
+                print(f"警告: 客户端 {client_id} 没有分配到任何样本，尝试为其分配至少一个样本")
+                # 尝试为客户端分配至少一个样本
+                for cls in classes:
+                    if len(remaining_indices.get(cls, [])) > 0:
+                        client_indices.append(remaining_indices[cls].pop(0))
+                        class_assign_counts[cls] -= 1
+                        break
+                    # 如果该类别没有样本了，尝试从其他类别获取
+                    elif len(class_indices.get(cls, [])) > 0:  # 检查原始类别是否有样本
+                        # 直接从原始类别中取一个样本
+                        client_indices.append(class_indices[cls].pop())
+                        break
+
+            # 只在有样本的情况下创建客户端
+            if len(client_indices) > 0:
+                self.clients[client_id] = Client(
+                    client_id=client_id,
+                    dataset=self,
+                    indices=client_indices,
+                    assigned_classes=classes,
+                    strategy=strategy,
+                    strategy_ratio=ratio,
+                    device=self.device
+                )
+            else:
+                print(f"警告: 客户端 {client_id} 无法分配到任何样本，已跳过")
 
     def _detect_image_size(self, dataset: Dataset) -> Tuple[int, int]:
         """通过取样法自动检测图像尺寸"""
@@ -773,30 +975,40 @@ class UniversalDataLoader(Dataset):
         )
 
         # 处理验证集
-        self._process_and_save_custom_dataset(
-            os.path.join(original_root, 'val'),
-            os.path.join(processed_root, 'val'),
-            selected_classes, cut_ratio, transform
-        )
-
-        print(f"已保存处理后的自定义数据集到: {processed_root}")
+        val_dir = os.path.join(original_root, 'val')
+        if os.path.exists(val_dir):
+            self._process_and_save_custom_dataset(
+                val_dir,
+                os.path.join(processed_root, 'val'),
+                selected_classes, cut_ratio, transform
+            )
+        else:
+            print(f"警告: 原始验证集目录不存在 {val_dir}，将不创建处理后的验证集")
 
     def _process_and_save_custom_dataset(self, original_dir: str, processed_dir: str,
                                          selected_classes: List[str], cut_ratio: Optional[float],
                                          transform: Any) -> None:
         """处理并保存自定义数据集的一个子集（训练集或验证集）"""
         os.makedirs(processed_dir, exist_ok=True)
+        total_saved = 0
 
         for class_name in selected_classes:
             class_path = os.path.join(original_dir, class_name)
             if not os.path.isdir(class_path):
+                print(f"警告: 类别目录不存在 {class_path}，将跳过")
                 continue
 
             processed_class_path = os.path.join(processed_dir, class_name)
             os.makedirs(processed_class_path, exist_ok=True)
 
-            images = [f for f in os.listdir(class_path) if os.path.isfile(os.path.join(class_path, f))]
+            # 获取所有图像文件
+            image_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
+            images = [f for f in os.listdir(class_path)
+                      if f.lower().endswith(image_extensions) and
+                      os.path.isfile(os.path.join(class_path, f))]
+
             if not images:
+                print(f"警告: 在 {class_path} 中未找到任何图像文件")
                 continue
 
             # 裁剪样本
@@ -817,8 +1029,11 @@ class UniversalDataLoader(Dataset):
                     save_img = transforms.ToPILImage()(transformed_img)
                     dst = os.path.join(processed_class_path, img)
                     save_img.save(dst)
+                    total_saved += 1
                 except Exception as e:
                     print(f"处理图像 {src} 时出错: {e}")
+
+        print(f"已处理并保存 {total_saved} 个图像文件到 {processed_dir}")
 
     def _print_report(self) -> None:
         """打印数据集报告"""
@@ -839,7 +1054,7 @@ class UniversalDataLoader(Dataset):
             print(f"数据增强: 已启用, 参数={self.augmentation_params}")
 
         print(f"总样本数: {len(self)}")
-        print(f"测试集样本数: {len(self.testset)}")
+        print(f"测试集样本数: {len(self.testset) if self.testset else 0}")
         print(f"客户端数量: {len(self.clients)}")
 
         # 打印客户端策略分配
@@ -913,12 +1128,15 @@ class UniversalDataLoader(Dataset):
         """返回数据集大小"""
         if not self.is_loaded:
             return 0
-        return len(self.indices)
+        return len(self.indices) if self.indices is not None else 0
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, Union[torch.Tensor, int]]:
         """获取数据集中的一个样本"""
         if not self.is_loaded:
             raise RuntimeError("请先调用load()方法加载数据集")
+
+        if idx >= len(self.indices):
+            raise IndexError(f"索引 {idx} 超出范围，数据集大小为 {len(self.indices)}")
 
         base_idx = self.indices[idx]
         label = self.custom_labels.get(idx, self.base_labels[base_idx])
@@ -951,7 +1169,11 @@ class Client(Dataset):
         self.noise_scale = None
         self.brightness_factor = None
 
-        self.apply_strategy()
+        # 只有当有样本时才应用策略
+        if len(self) > 0:
+            self.apply_strategy()
+        else:
+            print(f"警告: 客户端 {client_id} 没有样本，无法应用策略")
 
     def apply_strategy(self) -> None:
         """应用客户端策略"""
@@ -966,16 +1188,25 @@ class Client(Dataset):
             pass  # 类别倾斜策略在数据分配时已处理
         elif self.strategy == 'malicious':
             # 恶意客户端策略（标签翻转）
-            num_corrupt = max(1, int(len(self) * (1 - self.strategy_ratio)))
+            # 确保至少保留一个正确标签
+            num_corrupt = max(0, min(len(self) - 1, int(len(self) * (1 - self.strategy_ratio))))
 
-            for idx in np.random.choice(len(self), num_corrupt, replace=False):
-                data_idx = self.indices[idx]
-                true_label = UniversalDataLoader._to_numpy_label(self.dataset.base_labels[data_idx])
+            if num_corrupt > 0 and len(self) > 0:
+                # 只在有样本且需要翻转时才执行
+                try:
+                    # 使用torch的随机选择代替numpy，确保与PyTorch的随机状态一致
+                    indices = torch.randperm(len(self))[:num_corrupt].tolist()
 
-                if true_label in self.assigned_classes:
-                    possible_labels = [c for c in self.assigned_classes if c != true_label]
-                    if possible_labels:
-                        self.custom_labels[idx] = np.random.choice(possible_labels)
+                    for idx in indices:
+                        data_idx = self.indices[idx]
+                        true_label = UniversalDataLoader._to_numpy_label(self.dataset.base_labels[data_idx])
+
+                        if true_label in self.assigned_classes:
+                            possible_labels = [c for c in self.assigned_classes if c != true_label]
+                            if possible_labels:
+                                self.custom_labels[idx] = np.random.choice(possible_labels)
+                except Exception as e:
+                    print(f"客户端 {self.client_id} 应用恶意策略时出错: {e}")
 
     def get_data_loader(self, batch_size: int = 32, shuffle: bool = True) -> DataLoader:
         """获取客户端数据加载器"""
@@ -988,8 +1219,8 @@ class Client(Dataset):
         )
 
     def calculate_label_accuracy(self) -> float:
-        """计算标签准确率（用于恶意客户端）- 修复张量转换警告"""
-        # 使用张量索引代替循环，提高效率并修复警告
+        """计算标签准确率（用于恶意客户端）"""
+        # 使用张量索引代替循环，提高效率
         orig_labels = self.dataset.base_labels[self.indices].detach().clone().to(self.device, non_blocking=True)
 
         adj_labels = []
@@ -1009,14 +1240,13 @@ class Client(Dataset):
             else:
                 labels.append(int(label))
 
-        max_class = max(self.dataset.selected_classes) if self.dataset.selected_classes else 0
+        max_class = max(labels) if labels else 0
         counts = torch.bincount(torch.tensor(labels, dtype=torch.int64), minlength=max_class + 1)
 
         print(f"客户端 {self.client_id}:")
         print(f"  总样本数: {len(self)}")
-        for cls in self.dataset.selected_classes:
-            if counts[cls] > 0:
-                print(f"  类别 {cls}: {counts[cls]} 个样本 ({counts[cls] / len(self) * 100:.1f}%)")
+        for cls in set(labels):
+            print(f"  标签 {cls}: {counts[cls]} 个样本 ({counts[cls] / len(self) * 100:.1f}%)")
 
         print(f"  策略: {self.strategy}, 参数: {self.strategy_ratio:.2f}")
         if self.strategy == 'feature_noise':
@@ -1092,10 +1322,10 @@ if __name__ == "__main__":
     print(f"使用设备: {device}")
 
     loader = UniversalDataLoader(
-        root="../data",
+        root="..",
         num_client=5,
         num_local_class=2,
-        dataset_name='MNIST',
+        dataset_name='dt',
         seed=0,
         untrusted_strategies=[2.1, 3.5, 4.3, 0.5, 1.0],
         device=device,
@@ -1112,13 +1342,20 @@ if __name__ == "__main__":
     print(f"\n数据集统计信息: 均值={mean}, 标准差={std}")
 
     # 划分数据集
-    trainset_config, testset = loader.divide()
+    try:
+        trainset_config, testset = loader.divide()
 
-    print("\n数据集信息:")
-    print(f"  类别数: {loader.num_classes}")
-    print(f"  图像尺寸: {loader.image_size[0]}x{loader.image_size[1]}")
-    print(f"  图像通道数: {loader.in_channels}")
+        print("\n数据集信息:")
+        print(f"  类别数: {loader.num_classes}")
+        print(f"  图像尺寸: {loader.image_size}x{loader.image_size}")
+        print(f"  图像通道数: {loader.in_channels}")
 
-    # 验证前3个客户端的加载器
-    for i in range(3):
-        trainset_config['user_data'][f"f_0000{i}"].verify_loader()
+        # 验证前3个客户端的加载器
+        for i in range(3):
+            client_id = f"f_0000{i}"
+            if client_id in trainset_config['user_data']:
+                trainset_config['user_data'][client_id].verify_loader()
+            else:
+                print(f"客户端 {client_id} 不存在")
+    except Exception as e:
+        print(f"划分数据集时出错: {e}")
