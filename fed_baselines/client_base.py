@@ -1,13 +1,13 @@
 ## 客户端基类，实现客户端模型初始化和模型加载、更新、训练
 from torch.utils.data import DataLoader
 
-from preprocessing.fed_dataloader import DataSetInfo
+from preprocessing.fed_dataloader import UniversalDataLoader
 from utils.fed_utils import init_model
 from utils.models import *
 
 
 class FedClient(object):
-    def __init__(self, name, epoch, model_name, dataset_info: DataSetInfo):
+    def __init__(self, name, epoch, model_name, dataset_info: UniversalDataLoader):
         """
           初始化联邦学习中的客户端 k。
           :param name: 客户端 k 的名称
@@ -33,7 +33,9 @@ class FedClient(object):
         self.test_data = None
 
         # 初始化本地模型
-        self._num_class, self._image_dim, self._image_channel = dataset_info.get()
+        self._num_class = dataset_info.num_classes
+        self._image_dim = dataset_info.image_size
+        self._image_channel = dataset_info.in_channels
         self.model_name = model_name
         self.model = init_model(model_name=self.model_name, num_class=self._num_class,
                                 image_channel=self._image_channel)
