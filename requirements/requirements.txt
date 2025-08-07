@@ -5,3 +5,4 @@ PyYAML~=6.0.2
 scikit-learn~=1.7.1
 matplotlib~=3.10.3
 tenseal~=0.3.16
+pymceliece~=0.0.3
