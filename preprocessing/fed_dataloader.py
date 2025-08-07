@@ -1332,7 +1332,6 @@ if __name__ == "__main__":
         preload_to_gpu=False,
         in_channels=1,
         size=32,  # 指定图像尺寸
-        augmentation=True  # 启用数据增强
     )
 
     loader.load()
@@ -1347,7 +1346,10 @@ if __name__ == "__main__":
 
         print("\n数据集信息:")
         print(f"  类别数: {loader.num_classes}")
-        print(f"  图像尺寸: {loader.image_size}x{loader.image_size}")
+        if type(loader.image_size) is tuple:
+            print(f"  图像尺寸: {loader.image_size[0]}x{loader.image_size[1]}")
+        else:
+            print(f"  图像尺寸: {loader.image_size}x{loader.image_size}")
         print(f"  图像通道数: {loader.in_channels}")
 
         # 验证前3个客户端的加载器
