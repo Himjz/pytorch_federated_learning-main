@@ -4,12 +4,11 @@ import torch.nn.functional as F
 from sklearn.metrics import recall_score, f1_score, precision_score
 from torch.utils.data import DataLoader
 
-from preprocessing.fed_dataloader import UniversalDataLoader
 from utils.fed_utils import init_model
 
 
 class FedServer(object):
-    def __init__(self, client_list, model_name, dataset_info: UniversalDataLoader):
+    def __init__(self, client_list, model_name, dataset_info: list|tuple):
         """
         初始化联邦学习的服务器。
         :param client_list: 网络中连接的客户端列表
@@ -45,7 +44,7 @@ class FedServer(object):
         self._device = torch.device("cuda:{}".format(gpu) if torch.cuda.is_available() and gpu != -1 else "cpu")
 
         # 初始化全局机器学习模型
-        self._num_class, self._image_dim, self._image_channel = dataset_info.get()
+        self._num_class, self._image_dim, self._image_channel = dataset_info
         self.model_name = model_name
         self.model = init_model(model_name=self.model_name, num_class=self._num_class,
                                 image_channel=self._image_channel)
