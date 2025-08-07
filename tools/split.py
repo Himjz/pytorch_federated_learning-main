@@ -1,8 +1,6 @@
 import os
 import shutil
-from collections import Counter
-from typing import List, Dict, Optional
-from PIL import Image
+from typing import List, Dict
 
 
 class TopNClassSubsetBuilder:

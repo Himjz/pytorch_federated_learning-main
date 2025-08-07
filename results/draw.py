@@ -262,7 +262,7 @@ def main():
     show_plots = False  # 是否显示图表
     output_dir = 'metric_plots'  # 图表输出目录
 
-    json_files = [f for f in os.listdir('.') if f.endswith('.json')]
+    json_files = [f for f in os.listdir('') if f.endswith('.json')]
     if not json_files:
         print("No JSON files found.")
         return

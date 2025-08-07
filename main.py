@@ -11,7 +11,7 @@ import yaml
 from tqdm import tqdm
 
 from fed_baselines.client_base import FedClient
-from fed_baselines.client_feddp import FedDPClient
+from fed_baselines.client_feddpadv import FedDPClient
 from fed_baselines.client_fednova import FedNovaClient
 from fed_baselines.client_fedprox import FedProxClient
 from fed_baselines.client_scaffold import ScaffoldClient

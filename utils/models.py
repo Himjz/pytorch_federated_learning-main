@@ -184,7 +184,7 @@ class CNN(nn.Module):
             ('pool4', nn.MaxPool2d(kernel_size=2, stride=2)),
         ]))
 
-        self.fp_fc = nn.Linear(4096, num_classes, bias=False)
+        self.fp_fc = nn.Linear(262144, num_classes, bias=False)
 
     def forward(self, x):
         x = self.fp_con1(x)
@@ -196,7 +196,7 @@ class CNN(nn.Module):
 
 
 if __name__ == "__main__":
-    model_name_list = ["ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152"]
+    model_name_list = ["ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152",]
     for model_name in model_name_list:
         model = generate_resnet(num_classes=10, in_channels=1, model_name=model_name)
         model_parameters = filter(lambda p: p.requires_grad, model.parameters())

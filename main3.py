@@ -11,7 +11,8 @@ import yaml
 from tqdm import tqdm
 
 from fed_baselines.client_base import FedClient
-from fed_baselines.client_feddp import FedDPAdvClient
+from fed_baselines.client_feddp import FedDPClient
+from fed_baselines.client_feddpadv import FedDPAdvClient
 from fed_baselines.client_fednova import FedNovaClient
 from fed_baselines.client_fedprox import FedProxClient
 from fed_baselines.client_scaffold import ScaffoldClient
@@ -19,7 +20,7 @@ from fed_baselines.server_base import FedServer
 from fed_baselines.server_fednova import FedNovaServer
 from fed_baselines.server_scaffold import ScaffoldServer
 from postprocessing.recorder import Recorder
-from preprocessing.fed_dataloader import divide_data
+from preprocessing.fed_dataloader import UniversalDataLoader
 from utils.models import *
 
 json_types = (list, dict, str, int, float, bool, type(None))
@@ -62,7 +63,7 @@ def fed_run():
         except yaml.YAMLError as exc:
             print(exc)
 
-    algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova", 'FedDp']
+    algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova", 'FedDp','FedDpAdv']
     assert config["client"]["fed_algo"] in algo_list, "The federated learning algorithm is not supported"
 
     model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN"]
@@ -87,17 +88,45 @@ def fed_run():
         'loss': []
     }
 
-    trainset_config, testset, info = divide_data(root='./data',
-                                                 num_client=config["system"]["num_client"],
-                                                 num_local_class=config["system"]["num_local_class"],
-                                                 dataset_name=config["system"]["dataset"],
-                                                 i_seed=config["system"]["i_seed"],
-                                                 print_report=True,
-                                                 untrusted_strategies=None)
+    dataloader = UniversalDataLoader(root='./data',
+                                     num_client=config["system"]["num_client"],
+                                     num_local_class=config["system"]["num_local_class"],
+                                     dataset_name=config["system"]["dataset"],
+                                     seed=config["system"]["i_seed"],
+                                     in_channels=1,
+                                     cut = 0.6,
+                                     #untrusted_strategies=[1.0, 1.0, 1.0, 0.9, 1.0],
+                                     #size = 32,
+                                     #subset = ('top',12),
+                                     #augmentation=True #数据增强
+                                     )
+
+    dataloader.load()
+
+    trainset_config, testset= dataloader.divide()
+    info = (dataloader.num_classes,dataloader.image_size,dataloader.in_channels)
     max_acc = 0
+
     # 根据联邦学习算法和特定的联邦设置初始化客户端
     for client_id in trainset_config['users']:
-        if config["client"]["fed_algo"] == 'FedAvg':
+      #  is_single_client = config["system"]["num_client"] == 1  # 自动判断场景
+        if config["client"]["fed_algo"] == 'FedDp':
+            client_dict[client_id] = FedDPClient(
+                client_id, dataset_id=config["system"]["dataset"],
+                epoch=config["client"]["num_local_epoch"],
+                model_name=config["system"]["model"],
+                dataset_info=info,
+              # is_single_client=is_single_client  # 传递场景标识
+            )
+        elif config["client"]["fed_algo"] == 'FedDpAdv':
+            client_dict[client_id] = FedDPAdvClient(
+                client_id, dataset_id=config["system"]["dataset"],
+                epoch=config["client"]["num_local_epoch"],
+                model_name=config["system"]["model"],
+                dataset_info=info,
+             #  is_single_client=is_single_client  # 传递场景标识
+            )
+        elif config["client"]["fed_algo"] == 'FedAvg':
             client_dict[client_id] = FedClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                model_name=config["system"]["model"],
                                                dataset_info=info)
@@ -113,11 +142,7 @@ def fed_run():
             client_dict[client_id] = FedNovaClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                    model_name=config["system"]["model"],
                                                dataset_info=info)
-        elif config["client"]["fed_algo"] == 'FedDp':
-            client_dict[client_id] = FedDPAdvClient(client_id, dataset_id=config["system"]["dataset"],
-                                               epoch=config["client"]["num_local_epoch"],
-                                               model_name=config["system"]["model"],
-                                                 dataset_info=info )
+
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id] )
 
     # 根据联邦学习算法和特定的联邦设置初始化服务器
@@ -135,6 +160,9 @@ def fed_run():
         fed_server = FedNovaServer(trainset_config['users'], model_name=config["system"]["model"],
                                                dataset_info=info)
     elif config["client"]["fed_algo"] == 'FedDp':
+        fed_server = FedServer(trainset_config['users'], model_name=config["system"]["model"],
+                                               dataset_info=info)
+    elif config["client"]["fed_algo"] == 'FedDpAdv':
         fed_server = FedServer(trainset_config['users'], model_name=config["system"]["model"],
                                                dataset_info=info)
     fed_server.load_testset(testset)
@@ -158,6 +186,10 @@ def fed_run():
             elif config["client"]["fed_algo"] == 'FedProx':
                 client_dict[client_id].update(global_state_dict)
             elif config["client"]["fed_algo"] == 'FedNova':
+                client_dict[client_id].update(global_state_dict)
+            elif config["client"]["fed_algo"] == 'FedDp':
+                client_dict[client_id].update(global_state_dict)
+            elif config["client"]["fed_algo"] == 'FedDpAdv':
                 client_dict[client_id].update(global_state_dict)
             end_update = time.time()
             client_update_times.append(end_update - start_update)
@@ -185,6 +217,10 @@ def fed_run():
                 state_dict, n_data, loss, coeff, norm_grad = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss, coeff, norm_grad)
             elif config["client"]["fed_algo"] == 'FedDp':
+                client_dict[client_id].update(global_state_dict)
+                state_dict, n_data, loss = client_dict[client_id].train()
+                fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
+            elif config["client"]["fed_algo"] == 'FedDpAdv':
                 client_dict[client_id].update(global_state_dict)
                 state_dict, n_data, loss = client_dict[client_id].train()
                 fed_server.rec(client_dict[client_id].name, state_dict, n_data, loss)
@@ -223,6 +259,8 @@ def fed_run():
         elif config["client"]["fed_algo"] == 'FedNova':
             global_state_dict, avg_loss, _ = fed_server.agg()
         elif config['client']['fed_algo'] == 'FedDp' :
+            global_state_dict, avg_loss, _ = fed_server.agg()
+        elif config['client']['fed_algo'] == 'FedDpAdv' :
             global_state_dict, avg_loss, _ = fed_server.agg()
         end_agg = time.time()
         global_agg_time = end_agg - start_agg

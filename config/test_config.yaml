@@ -1,16 +1,16 @@
 system:
-  num_client: 1
-  num_local_class: 10
-  dataset: "MNIST"
+  num_client: 12
+  num_local_class: 4
+  dataset: "dt3"
   model: "ResNet18"
   i_seed: 235235
-  num_round: 20
+  num_round: 50
   res_root: "results"
 
 client:
-  fed_algo: "FedDp"
+  fed_algo: "FedDpAdv"
   lr: 0.01
-  batch_size: 8
+  batch_size: 32
   num_local_epoch: 3
   momentum: 0.9
   num_worker: 2
