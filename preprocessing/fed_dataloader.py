@@ -684,28 +684,30 @@ class UniversalDataLoader(Dataset):
 
     def _get_processed_dataset_name(self) -> str:
         """生成处理后的数据集名称"""
-        parts = [self.dataset_name]
+        if self.save:
+            parts = [self.dataset_name]
 
-        if self.subset_params is not None:
-            subset_type, subset_value = self.subset_params
-            parts.append(f"subset_{subset_type}_{subset_value}")
+            if self.subset_params is not None:
+                subset_type, subset_value = self.subset_params
+                parts.append(f"subset_{subset_type}_{subset_value}")
 
-        if self.cut_ratio is not None:
-            parts.append(f"cut_{self.cut_ratio}")
+            if self.cut_ratio is not None:
+                parts.append(f"cut_{self.cut_ratio}")
 
-        if self.image_size is not None:
-            if isinstance(self.image_size, tuple):
-                parts.append(f"size_{self.image_size[0]}x{self.image_size[1]}")
-            else:
-                parts.append(f"size_{self.image_size}")
+            if self.image_size is not None:
+                if isinstance(self.image_size, tuple):
+                    parts.append(f"size_{self.image_size[0]}x{self.image_size[1]}")
+                else:
+                    parts.append(f"size_{self.image_size}")
 
-        if self.in_channels is not None:
-            parts.append(f"channels_{self.in_channels}")
+            if self.in_channels is not None:
+                parts.append(f"channels_{self.in_channels}")
 
-        if self.augmentation:
-            parts.append("augmented")
+            if self.augmentation:
+                parts.append("augmented")
 
-        return "_".join(parts)
+            return "_".join(parts)
+        return self.dataset_name
 
     def _save_processed_dataset(self, dataset_cls: Any, transform: Any, full_trainset: Dataset,
                                 full_testset: Dataset, trainset: Dataset, testset: Dataset, root: str) -> None:
