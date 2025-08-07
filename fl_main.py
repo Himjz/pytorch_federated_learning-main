@@ -84,6 +84,8 @@ def fed_run():
                                                  dataset_name=config["system"]["dataset"],
                                                  seed=config["system"]["i_seed"])
 
+    dataloader.load()
+
     trainset_config, testset= dataloader.divide()
     max_acc = 0
 
