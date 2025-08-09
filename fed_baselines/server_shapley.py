@@ -1,14 +1,14 @@
-from fed_baselines import server_base
-import itertools
 import copy
+import itertools
 import random
+
 import numpy as np  # 用于更精确的随机数控制
 
-from preprocessing.fed_dataloader import UniversalDataLoader
+from fed_baselines import server_base
 
 
 class FedShapley(server_base.FedServer):
-    def __init__(self, client_list, model_name, dataset_info: UniversalDataLoader, use_monte_carlo=False,
+    def __init__(self, client_list, model_name, dataset_info: list, use_monte_carlo=False,
                  monte_carlo_samples=120, random_seed=None):
         super().__init__(client_list, model_name, dataset_info)
         self.client_states = {}
