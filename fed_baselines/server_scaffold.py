@@ -1,12 +1,11 @@
 import copy
 
 from fed_baselines.server_base import FedServer
-from preprocessing.fed_dataloader import UniversalDataLoader
 from utils.fed_utils import init_model
 
 
 class ScaffoldServer(FedServer):
-    def __init__(self, client_list, model_name, dataset_info: UniversalDataLoader):
+    def __init__(self, client_list, model_name, dataset_info: list|tuple):
         super().__init__(client_list, model_name, dataset_info)
         # 服务器控制变量
         self.scv = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)

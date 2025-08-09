@@ -1,11 +1,10 @@
 import copy
 
 from fed_baselines.server_base import FedServer
-from preprocessing.fed_dataloader import UniversalDataLoader
 
 
 class FedNovaServer(FedServer):
-    def __init__(self, client_list, model_name, dataset_info: UniversalDataLoader):
+    def __init__(self, client_list, model_name, dataset_info: list|tuple):
         super().__init__(client_list, model_name, dataset_info)
         # 归一化系数
         self.client_coeff = {}
