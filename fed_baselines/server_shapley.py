@@ -8,7 +8,7 @@ from fed_baselines import server_base
 
 
 class FedShapley(server_base.FedServer):
-    def __init__(self, client_list, model_name, dataset_info: list, use_monte_carlo=False,
+    def __init__(self, client_list, model_name, dataset_info: list|tuple, use_monte_carlo=False,
                  monte_carlo_samples=120, random_seed=None):
         super().__init__(client_list, model_name, dataset_info)
         self.client_states = {}

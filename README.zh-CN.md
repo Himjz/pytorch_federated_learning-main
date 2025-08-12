@@ -29,7 +29,7 @@ PyTorch-Federated-Learning 提供了使用PyTorch框架实现的各种联邦学�
 
 ### 安装要求
 
-运行: `python install.py` to install the required packages.
+运行: `python install.py` 安装依赖项。
 
 ## 联邦数据集预处理
 

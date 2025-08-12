@@ -79,10 +79,11 @@ def fed_run():
     }
 
     dataloader = UniversalDataLoader(root='../data',
-                                                 num_client=config["system"]["num_client"],
-                                                 num_local_class=config["system"]["num_local_class"],
-                                                 dataset_name=config["system"]["dataset"],
-                                                 seed=config["system"]["i_seed"])
+                                     num_client=config["system"]["num_client"],
+                                     num_local_class=config["system"]["num_local_class"],
+                                     dataset_name=config["system"]["dataset"],
+                                     seed=config["system"]["i_seed"],
+                                     subset=("top", 9))
 
     dataloader.load()
 
