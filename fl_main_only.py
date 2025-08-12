@@ -111,39 +111,50 @@ def fed_run():
         elif config["client"]["fed_algo"] == 'SCAFFOLD':
             client_dict[client_id] = ScaffoldClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                     model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                                    dataset_info=info)
         elif config["client"]["fed_algo"] == 'FedProx':
             client_dict[client_id] = FedProxClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                    model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                                   dataset_info=info)
         elif config["client"]["fed_algo"] == 'FedNova':
             client_dict[client_id] = FedNovaClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                    model_name=config["system"]["model"],
-                                               dataset_info=info)
+                                                   dataset_info=info)
         elif config["client"]["fed_algo"] == 'FedShapley':
             client_dict[client_id] = FedClient(client_id, epoch=config["client"]["num_local_epoch"],
                                                model_name=config["system"]["model"],
                                                dataset_info=info)
+        else:
+            raise ValueError("不存在该模型")
         # print(trainset_config['user_data'][client_id])
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # 根据联邦学习算法和特定的联邦设置初始化服务器
     if config["client"]["fed_algo"] == 'FedAvg':
-        fed_server = FedServer(trainset_config['users'], model_name=config["system"]["model"],
+        fed_server = FedServer(trainset_config['users'],
+                               model_name=config["system"]["model"],
                                dataset_info=info)
     elif config["client"]["fed_algo"] == 'SCAFFOLD':
-        fed_server = ScaffoldServer(trainset_config['users'], model_name=config["system"]["model"],
-                                               dataset_info=info)
+        fed_server = ScaffoldServer(trainset_config['users'],
+                                    model_name=config["system"]["model"],
+                                    dataset_info=info)
         scv_state = fed_server.scv.state_dict()
     elif config["client"]["fed_algo"] == 'FedProx':
-        fed_server = FedServer(trainset_config['users'], model_name=config["system"]["model"],
+        fed_server = FedServer(trainset_config['users'],
+                               model_name=config["system"]["model"],
                                dataset_info=info)
     elif config["client"]["fed_algo"] == 'FedNova':
-        fed_server = FedNovaServer(trainset_config['users'], model_name=config["system"]["model"],
-                                               dataset_info=info)
+        fed_server = FedNovaServer(trainset_config['users'],
+                                   model_name=config["system"]["model"],
+                                   dataset_info=info)
     elif config["client"]["fed_algo"] == 'FedShapley':
-        fed_server = FedShapley(trainset_config['users'], model_name=config["system"]["model"],use_monte_carlo=True,
-                                monte_carlo_samples=2000,dataset_info=info)
+        fed_server = FedShapley(trainset_config['users'],
+                                model_name=config["system"]["model"],
+                                use_monte_carlo=True,
+                                monte_carlo_samples=2000,
+                                dataset_info=info)
+    else:
+        raise ValueError("不存在该模型")
     fed_server.load_testset(testset)
     global_state_dict = fed_server.state_dict()
 
