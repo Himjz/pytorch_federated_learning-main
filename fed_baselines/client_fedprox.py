@@ -8,8 +8,15 @@ from utils.models import *
 
 
 class FedProxClient(FedClient):
-    def __init__(self, name, epoch, model_name, dataset_info: list|tuple):
-        super().__init__(name, epoch, model_name, dataset_info)
+    def __init__(self, name, epoch, model_name, dataset_info: list|tuple,
+                 target_ip: str = '127.0.0.3', port: int = 9999,
+                 local_ip: str = None, local_port: int = None,
+                 return_packed: bool = False, local: bool = True
+                 ):
+        super().__init__(name, epoch, model_name, dataset_info,
+                         target_ip, port,
+                         local_ip, local_port,
+                         return_packed, local)
         self.mu = 0.1
 
     def train(self):
