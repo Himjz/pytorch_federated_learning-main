@@ -1,12 +1,13 @@
-import torch
-import numpy as np
-from torch.utils.data import Dataset, DataLoader
 from typing import List, Optional, Union, Tuple
+
+import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader
 
 
 class Client(Dataset):
     """客户端类，代表联邦学习中的一个客户端节点"""
-    
+
     def __init__(self, client_id: str, dataset: Dataset, indices: List[int],
                  assigned_classes: List[int], strategy: str = 'normal', strategy_ratio: float = 1.0,
                  device: Optional[torch.device] = None):
@@ -26,7 +27,7 @@ class Client(Dataset):
             self.apply_strategy()
         else:
             print(f"警告: 客户端 {client_id} 没有样本")
-    
+
     def apply_strategy(self) -> None:
         """应用客户端策略（如恶意行为、数据稀疏等）"""
         if self.strategy == 'feature_noise':
@@ -50,7 +51,7 @@ class Client(Dataset):
                                 self.custom_labels[idx] = np.random.choice(possible_labels)
                 except Exception as e:
                     print(f"客户端 {self.client_id} 应用恶意策略时出错: {e}")
-    
+
     def get_data_loader(self, batch_size: int = 32, shuffle: bool = True) -> DataLoader:
         """获取客户端数据加载器"""
         return DataLoader(
@@ -60,7 +61,7 @@ class Client(Dataset):
             pin_memory=(self.device.type == 'cpu'),
             num_workers=0 if self.device.type == 'cuda' else 2
         )
-    
+
     def calculate_label_accuracy(self) -> float:
         """计算标签准确率（用于评估恶意客户端的标签污染程度）"""
         orig_labels = self.dataset.base_labels[self.indices].detach().clone().to(self.device, non_blocking=True)
@@ -71,7 +72,7 @@ class Client(Dataset):
         adj_labels = torch.tensor(adj_labels, device=self.device, dtype=torch.int64)
 
         return (orig_labels == adj_labels).sum().item() / len(orig_labels) if len(orig_labels) > 0 else 0.0
-    
+
     def print_distribution(self, num_classes: int) -> None:
         """打印客户端数据分布信息"""
         labels = []
@@ -92,7 +93,7 @@ class Client(Dataset):
 
         print(f"  策略: {self.strategy}, 参数: {self.strategy_ratio:.2f}")
         print()
-    
+
     def verify_loader(self) -> None:
         """验证客户端数据加载器是否正常工作"""
         batch_size = min(5, len(self))
@@ -120,11 +121,11 @@ class Client(Dataset):
             print("  ✅ 验证通过")
         else:
             print("  ❌ 验证失败")
-    
+
     def __len__(self) -> int:
         """返回客户端样本数量"""
         return len(self.indices)
-    
+
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, Union[torch.Tensor, int]]:
         """获取客户端的单个样本"""
         data_idx = self.indices[idx]

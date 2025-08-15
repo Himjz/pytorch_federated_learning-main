@@ -1,11 +1,12 @@
+from typing import List, Dict, Optional, Any
+
 import torch
 import torchvision.transforms as transforms
-from typing import List, Dict, Optional, Any
 
 
 class TransformMixin:
     """数据转换混合类，提供数据增强和转换功能"""
-    
+
     def __init__(self, augmentation: bool = False, augmentation_params: Optional[Dict[str, Any]] = None):
         self.augmentation = augmentation
         self.augmentation_params = augmentation_params or {
@@ -14,7 +15,7 @@ class TransformMixin:
             'scale': 0.1,
             'flip': True
         }
-    
+
     def _get_augmentation_transform(self) -> List[transforms.transforms]:
         """获取数据增强转换列表"""
         aug_transforms = []
@@ -29,7 +30,7 @@ class TransformMixin:
             scale = self.augmentation_params['scale']
             aug_transforms.append(transforms.RandomAffine(0, scale=(1 - scale, 1 + scale)))
         return aug_transforms
-    
+
     def _create_channel_transform(self) -> Optional[Any]:
         """创建通道转换，用于调整图像通道数"""
         if self.in_channels is None:
@@ -49,7 +50,7 @@ class TransformMixin:
                 return img
 
         return ChannelTransformer(self.in_channels)
-    
+
     def _add_normalization(self, transform_list: List[transforms.transforms]) -> None:
         """向转换列表添加标准化步骤"""
         if self.in_channels == 1 or (self.in_channels is None and self.dataset_name in ['MNIST', 'FashionMNIST']):
