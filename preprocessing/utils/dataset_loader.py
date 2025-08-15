@@ -16,14 +16,14 @@ from preprocessing.utils.transforms import TransformMixin
 
 class DatasetLoader(BaseDataLoader, TransformMixin):
     """数据集加载器，继承基础加载器和转换混合类，处理具体的数据集加载逻辑"""
-    
+
     def __init__(self, **kwargs):
         # 初始化父类
-        BaseDataLoader.__init__(self,** kwargs)
-        TransformMixin.__init__(self, 
-                               augmentation=kwargs.get('augmentation', False),
-                               augmentation_params=kwargs.get('augmentation_params', None))
-        
+        BaseDataLoader.__init__(self, **kwargs)
+        TransformMixin.__init__(self,
+                                augmentation=kwargs.get('augmentation', False),
+                                augmentation_params=kwargs.get('augmentation_params', None))
+
         # 数据集特定参数
         self.default_datasets = {
             'MNIST': (torchvision.datasets.MNIST, 10),
@@ -31,7 +31,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
             'FashionMNIST': (torchvision.datasets.FashionMNIST, 10),
             'CIFAR100': (torchvision.datasets.CIFAR100, 100),
         }
-    
+
     def load(self) -> 'DatasetLoader':
         """加载数据集主方法"""
         if self.is_loaded:
@@ -82,7 +82,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
         self.is_loaded = True
         print(f"数据集 {self.dataset_name} 加载完成")
         return self
-    
+
     def _load_default_dataset(self, base_transform_list: List, auto_detect_size: bool) -> None:
         """加载默认支持的数据集（如MNIST, CIFAR等）"""
         dataset_cls, self.num_classes = self.default_datasets[self.dataset_name]
@@ -128,7 +128,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
             )
 
         self._process_labels_and_images(trainset, testset)
-    
+
     def _load_custom_dataset(self, base_transform_list: List, auto_detect_size: bool) -> None:
         """加载自定义数据集"""
         dataset_root = os.path.join(self.root, self.dataset_name)
@@ -270,7 +270,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
         print(f"图像尺寸: {self.image_size}, 通道数: {self.in_channels}")
         print(
             f"选择的类别数: {self.num_classes}, 类别列表: {trainset.dataset.classes if isinstance(trainset, Subset) else trainset.classes}")
-    
+
     def _apply_class_subset(self, full_trainset: Dataset, full_testset: Dataset) -> Tuple[Dataset, Dataset]:
         """应用类别筛选，只保留选定的类别"""
         if self.subset_params is not None:
@@ -293,7 +293,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
             raise ValueError(f"选择的类别数小于1，当前数量: {len(self.selected_classes)}")
 
         return trainset, testset
-    
+
     def _handle_size(self, dataset_cls: Any, base_transform_list: List, full_trainset: Dataset,
                      full_testset: Dataset, trainset: Dataset, testset: Dataset, auto_detect_size: bool) -> Tuple[
         Any, Dataset, Dataset]:
@@ -326,7 +326,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
             trainset, testset = self._apply_class_subset(full_trainset, full_testset)
 
         return final_transform, trainset, testset
-    
+
     def _handle_custom_dataset_size(self, base_transform_list: List, temp_dataset: Dataset,
                                     auto_detect_size: bool) -> List:
         """处理自定义数据集的图像尺寸"""
@@ -342,7 +342,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
                 transform_list.insert(0, transforms.Resize(self.image_size))
 
         return transform_list
-    
+
     def _process_labels_and_images(self, trainset: Dataset, testset: Dataset) -> None:
         """处理标签和图像数据"""
         # 处理训练集标签
@@ -405,7 +405,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
 
         self.indices = list(range(len(trainset)))
         self.testset = testset
-    
+
     def _detect_image_size(self, dataset: Dataset) -> Tuple[int, int]:
         """自动检测图像尺寸"""
         sample_size = min(int(len(dataset) * 0.2), 1000)
@@ -435,7 +435,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
         most_common_size = max(size_counts.items(), key=lambda x: x[1])[0]
         print(f"自动检测到图像尺寸: {most_common_size}")
         return most_common_size
-    
+
     def _detect_in_channels(self, dataset: Dataset) -> int:
         """自动检测图像通道数"""
         sample_size = min(5, len(dataset))
@@ -454,7 +454,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
         in_channels = channels.pop()
         print(f"自动检测到通道数: {in_channels}")
         return in_channels
-    
+
     def _select_classes(self, trainset: Dataset, testset: Dataset, subset_type: str,
                         subset_value: Union[int, float]) -> Tuple[Subset, Subset, List[int]]:
         """选择数据集中的部分类别"""
@@ -487,7 +487,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
                 test_indices.append(i)
 
         return Subset(trainset, train_indices), Subset(testset, test_indices), selected_classes
-    
+
     def _select_custom_classes(self, all_classes: List[str], subset_type: str,
                                subset_value: Union[int, float]) -> List[str]:
         """选择自定义数据集中的部分类别"""
@@ -502,7 +502,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
             return all_classes[-num_classes:] if num_classes > 0 else []
         else:
             return random.sample(all_classes, num_classes)
-    
+
     def _cut_samples(self, trainset: Dataset, testset: Dataset, cut_ratio: float) -> Tuple[Subset, Subset]:
         """按比例裁剪样本"""
         train_size = int(len(trainset) * cut_ratio)
@@ -528,7 +528,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
 
         print(f"裁剪后 - 训练集: {len(train_subset)} 样本, 测试集: {len(test_subset)} 样本")
         return train_subset, test_subset
-    
+
     def _get_processed_dataset_name(self) -> str:
         """获取处理后的数据集名称"""
         if self.save:
@@ -555,7 +555,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
 
             return "_".join(parts)
         return self.dataset_name
-    
+
     def _save_processed_dataset(self, dataset_cls: Any, transform: Any, full_trainset: Dataset,
                                 full_testset: Dataset, trainset: Dataset, testset: Dataset, root: str) -> None:
         """保存处理后的数据集"""
@@ -593,7 +593,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
             print(f"已保存处理后的数据集到: {processed_root}")
         else:
             print(f"警告: 数据集 {self.dataset_name} 不支持直接保存处理后的文件")
-    
+
     def _get_original_indices(self, dataset: Dataset) -> List[int]:
         """获取原始数据集的索引"""
         if not isinstance(dataset, Subset):
@@ -605,7 +605,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
             indices = [dataset.indices[i] for i in indices]
 
         return indices
-    
+
     def _create_processed_custom_dataset(self, original_root: str, processed_root: str,
                                          selected_classes: List[str], cut_ratio: Optional[float],
                                          transform: Any) -> None:
@@ -625,7 +625,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
             )
         else:
             print(f"警告: 原始验证集目录不存在 {val_dir}")
-    
+
     def _process_and_save_custom_dataset(self, original_dir: str, processed_dir: str,
                                          selected_classes: List[str], cut_ratio: Optional[float],
                                          transform: Any) -> None:

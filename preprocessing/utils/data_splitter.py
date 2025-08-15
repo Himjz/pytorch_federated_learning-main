@@ -1,12 +1,13 @@
 import random
+from collections import defaultdict
+from typing import List, Dict, Tuple, Union, Any
+
 import numpy as np
 import torch
-from collections import defaultdict
 from tqdm import tqdm
-from typing import List, Dict, Tuple, Optional, Union, Any
 
-from .dataset_loader import DatasetLoader
 from .client import Client
+from .dataset_loader import DatasetLoader
 
 
 class DataSplitter(DatasetLoader):
