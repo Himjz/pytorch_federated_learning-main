@@ -79,10 +79,10 @@ def fed_run():
     }
 
     dataloader = UniversalDataLoader(root='../data',
-                                                 num_client=config["system"]["num_client"],
-                                                 num_local_class=config["system"]["num_local_class"],
-                                                 dataset_name=config["system"]["dataset"],
-                                                 seed=config["system"]["i_seed"])
+                                     num_client=config["system"]["num_client"],
+                                     num_local_class=config["system"]["num_local_class"],
+                                     dataset_name=config["system"]["dataset"],
+                                     seed=config["system"]["i_seed"])
 
     dataloader.load()
 
@@ -111,6 +111,7 @@ def fed_run():
         client_dict[client_id].load_trainset(trainset_config['user_data'][client_id])
 
     # 初始化服务器
+    scv_state = None
     if config["client"]["fed_algo"] == 'FedAvg':
         fed_server = FedServer(trainset_config['users'], model_name=config["system"]["model"],
                                dataset_info=info)
@@ -124,6 +125,8 @@ def fed_run():
     elif config["client"]["fed_algo"] == 'FedNova':
         fed_server = FedNovaServer(trainset_config['users'], model_name=config["system"]["model"],
                                    dataset_info=info)
+    else:
+        raise ValueError("The federated learning algorithm is not supported")
     fed_server.load_testset(testset)
     global_state_dict = fed_server.state_dict()
 
@@ -153,7 +156,7 @@ def fed_run():
             start_update = time.time()
             if config["client"]["fed_algo"] == 'FedAvg':
                 client_dict[client_id].update(global_state_dict)
-            elif config["client"]["fed_algo"] == 'SCAFFOLD':
+            elif (config["client"]["fed_algo"] == 'SCAFFOLD') & (scv_state is not None):
                 client_dict[client_id].update(global_state_dict, scv_state)
             elif config["client"]["fed_algo"] == 'FedProx':
                 client_dict[client_id].update(global_state_dict)
