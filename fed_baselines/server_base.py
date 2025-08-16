@@ -1,507 +1,342 @@
 import pickle
 import socket
-import struct
 import threading
-import uuid
-from collections import defaultdict
-from datetime import datetime
+import time
+from typing import Dict, List, Tuple, Any, Optional, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
-from sklearn.metrics import recall_score, f1_score, precision_score
-from torch.utils.data import DataLoader
+import torch.nn as nn
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from torch import Tensor
+from torch.utils.data import DataLoader, Dataset
 
-from utils.fed_utils import init_model
 
+class FedServer:
+    def __init__(self,
+                 client_list:List[str],
+                 model_name: str,
+                 dataset_name: str,
+                 device: str = 'cpu',
+                 local: bool = True,
+                 ip: str = '0.0.0.0',
+                 port: int = 5000,
+                 enable_serialization: Optional[bool] = None) -> None:
+        self.client_list = client_list
+        self.model_name: str = model_name
+        self.dataset_name: str = dataset_name
+        self.device: str = device
+        self.clients_params: Dict[str, Dict[str, Tensor]] = {}  # 客户端模型参数
+        self.clients_loss: Dict[str, float] = {}  # 客户端损失
+        self.clients_data_size: Dict[str, int] = {}  # 客户端数据量
+        self.selected_clients: List[str] = []  # 选中的客户端
+        self.total_data_size: int = 0  # 总数据量
+        self.test_loader: Optional[DataLoader[Dataset]] = None  # 测试数据集加载器
 
-class FedServer(object):
-    def __init__(self, client_list, model_name, dataset_info: list | tuple,
-                 server_ip: str = '127.0.0.3', server_port: int = 9999,
-                 local: bool = True):
-        """
-        初始化联邦学习服务器（兼容原始版本接口）
-        :param model_name: 模型名称
-        :param dataset_info: 数据集信息 (num_class, image_dim, image_channel)
-        :param server_ip: 服务器IP地址（网络模式有效）
-        :param server_port: 服务器端口（网络模式有效）
-        :param local: 是否启用本地模式，默认为True
-        """
-        # 客户端状态管理 - 保持原始版本数据结构
-        self.client_state = {}  # {client_id: state_dict}
-        self.client_loss = {}  # {client_id: loss}
-        self.client_n_data = {}  # {client_id: n_data}
-        self.client_info = {}  # {client_id: info}
-        self.selected_clients = []
-        self._batch_size = 200
-        self.client_list = []
+        # 网络相关属性
+        self.local: bool = local  # 是否为本地模式
+        self.ip: str = ip
+        self.port: int = port
+        self.server_socket: Optional[socket.socket] = None
+        self.running: bool = False
+        self.client_info: Dict[str, Tuple[str, int, float]] = {}  # 客户端信息 {client_id: (ip, port, last_active)}
+        self.global_model: nn.Module = self._init_global_model()  # 全局模型
+        self.global_model_history: Dict[int, Dict[str, Tensor]] = {0: self.global_model.state_dict()}  # 模型历史
+        self.current_round: int = 0
+        self.supported_algorithms: List[str] = ['fedavg', 'scaffold', 'fedprox']  # 支持的联邦算法
+        self.selected_algorithm: str = 'fedavg'  # 默认算法
 
-        # 测试数据集
-        self.testset = None
-
-        # 联邦学习参数 - 保持原始版本属性
-        self.round = 0
-        self.n_data = 0
-
-        # 服务器配置
-        self.supported_algorithms = ['fedavg', 'scaffold', 'fednova', 'fedprox']
-        self.local = local
-
-        # 新增序列化控制参数但保持默认兼容性
-        self.local_use_serialization = False  # 默认为False，保持原始行为
-
-        # 轮次管理（网络模式）
-        if not self.local:
-            self.server_ip = server_ip
-            self.server_port = server_port
-            self.is_running = False
-            self.connection_thread = None
-            self.client_handlers = []
-            self.round_data = defaultdict(dict)
-            self.waiting_clients = defaultdict(list)
-            self.round_ready = defaultdict(bool)
+        # 序列化控制参数
+        # 网络模式下强制开启序列化，本地模式默认关闭
+        if enable_serialization is None:
+            self.enable_serialization: bool = not self.local
         else:
-            self.server_ip = None
-            self.server_port = None
-            self.is_running = False
-            self.connection_thread = None
-            self.client_handlers = []
+            # 网络模式下忽略用户设置，强制开启
+            self.enable_serialization = enable_serialization if self.local else True
 
-        # 设备配置 - 保持原始实现
-        gpu = 0
-        self._device = torch.device(
-            "cuda:{}".format(gpu) if torch.cuda.is_available() and gpu != -1 else "cpu"
-        )
-
-        # 初始化全局模型 - 保持原始逻辑
-        self._num_class, self._image_dim, self._image_channel = dataset_info
-        self.model_name = model_name
-        self.model = init_model(
-            model_name=self.model_name,
-            num_class=self._num_class,
-            image_channel=self._image_channel
-        )
-        self.global_model_history = {0: self.model.state_dict()}
-
-    # 核心功能 - 保持原始接口
-    def load_testset(self, testset):
-        self.testset = testset
-
-    def state_dict(self):
-        return self.model.state_dict()
-
-    def test(self, default: bool = True):
-        if not self.testset:
-            raise ValueError("请先加载测试数据集")
-
-        test_loader = DataLoader(self.testset, batch_size=self._batch_size, shuffle=True)
-        self.model.to(self._device)
-        accuracy_collector = 0
-        loss_collector = 0
-        all_preds = []
-        all_labels = []
-
-        for step, (x, y) in enumerate(test_loader):
-            with torch.no_grad():
-                b_x = x.to(self._device)
-                b_y = y.to(self._device)
-
-                test_output = self.model(b_x)
-                pred_y = torch.max(test_output, 1)[1].to(self._device).data.squeeze()
-
-                accuracy_collector += (pred_y == b_y).sum().item()
-                loss = F.cross_entropy(test_output, b_y)
-                loss_collector += loss.item()
-
-                all_preds.extend(pred_y.cpu().numpy())
-                all_labels.extend(b_y.cpu().numpy())
-
-        accuracy = accuracy_collector / len(self.testset)
-        avg_loss = loss_collector / len(test_loader)
-
-        if default:
-            return accuracy
-        else:
-            recall = recall_score(all_labels, all_preds, average='weighted')
-            f1 = f1_score(all_labels, all_preds, average='weighted')
-            precision = precision_score(all_labels, all_preds, average='weighted', zero_division=0)
-            return accuracy, recall, f1, avg_loss, precision
-
-    # 联邦学习流程 - 保持原始行为
-    def select_clients(self, connection_ratio=1):
-        self.selected_clients = []
-        self.n_data = 0
-
-        for client_id in self.client_list:
-            b = np.random.binomial(np.ones(1).astype(int), connection_ratio)
-            if b:
-                self.selected_clients.append(client_id)
-                if client_id in self.client_n_data:
-                    self.n_data += self.client_n_data[client_id]
-
-    def agg(self):
-        client_num = len(self.selected_clients)
-        if client_num == 0 or self.n_data == 0:
-            return self.model.state_dict(), 0, 0
-
-        model = init_model(
-            model_name=self.model_name,
-            num_class=self._num_class,
-            image_channel=self._image_channel
-        )
-        model_state = model.state_dict()
-        avg_loss = 0
-
-        for i, client_id in enumerate(self.selected_clients):
-            if client_id not in self.client_state:
-                continue
-            client_weight = self.client_n_data[client_id] / self.n_data
-
-            for key in self.client_state[client_id]:
-                if i == 0:
-                    model_state[key] = self.client_state[client_id][key] * client_weight
-                else:
-                    model_state[key] += self.client_state[client_id][key] * client_weight
-
-            avg_loss += self.client_loss[client_id] * client_weight
-
-        self.model.load_state_dict(model_state)
-        self.global_model_history[self.round + 1] = model_state
-        self.round += 1
-        n_data = self.n_data
-
-        return model_state, avg_loss, n_data
-
-    def rec(self, client_id=None, state_dict=None, n_data=None, loss=None, serialized_data=None):
-        """接收客户端数据 - 保持原始接口并兼容新功能"""
-        # 原始版本行为：本地模式不使用序列化
-        if self.local:
-            # 兼容原始调用方式：不传入serialized_data
-            if serialized_data is not None:
-                print("警告: 本地模式下忽略序列化数据（原始版本兼容行为）")
-                return False
-            # 检查必要参数（原始版本要求）
-            if any(param is None for param in [client_id, state_dict, n_data, loss]):
-                print("原始参数不完整")
-                return False
-            return self._process_raw_parameters(client_id, state_dict, n_data, loss)
-
-        # 网络模式处理
-        if serialized_data is not None:
-            if any(param is not None for param in [client_id, state_dict, n_data, loss]):
-                print("不能同时提供序列化数据和原始参数")
-                return False
-            return self._process_serialized_data(serialized_data)
-        else:
-            if any(param is None for param in [client_id, state_dict, n_data, loss]):
-                print("原始参数不完整")
-                return False
-            # 网络模式下自动序列化
-            serialized = self._serialize({
-                'client_id': client_id,
-                'model_state': state_dict,
-                'n_data': n_data,
-                'loss': loss
-            })
-            encoded = self._encode(serialized)
-            return self._process_serialized_data(encoded)
-
-    # 数据处理 - 保持原始逻辑
-    def _process_serialized_data(self, encoded_data):
-        """处理编码后的序列化数据（网络模式）"""
-        try:
-            decoded_data = self._decode(encoded_data)
-            parameters = self._deserialize(decoded_data)
-
-            required_keys = ['model_state', 'n_data', 'loss', 'client_id']
-            if not all(key in parameters for key in required_keys):
-                print("上传的参数缺少必要字段")
-                return False
-
-            return self._process_raw_parameters(
-                client_id=parameters['client_id'],
-                state_dict=parameters['model_state'],
-                n_data=parameters['n_data'],
-                loss=parameters['loss']
+    def _init_global_model(self) -> nn.Module:
+        """初始化全局模型"""
+        if self.model_name == 'cnn' and self.dataset_name == 'mnist':
+            model = nn.Sequential(
+                nn.Conv2d(1, 32, kernel_size=3),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Flatten(),
+                nn.Linear(13 * 13 * 32, 128),
+                nn.ReLU(),
+                nn.Linear(128, 10)
             )
+        else:
+            model = nn.Linear(20, 10)
 
-        except Exception as e:
-            print(f"处理序列化参数时出错: {str(e)}")
-            return False
+        return model.to(self.device)
 
-    def _process_raw_parameters(self, client_id, state_dict, n_data, loss):
-        """处理原始参数 - 保持原始实现"""
-        try:
-            if not self.local and client_id not in self.client_list:
-                print(f"客户端 {client_id} 未授权上传参数")
-                return False
+    def load_testset(self, test_loader: DataLoader[Dataset]) -> 'FedServer':
+        """加载测试集（与0.py接口一致）"""
+        self.test_loader = test_loader
+        return self
 
-            self.n_data += n_data
+    def test(self) -> Dict[str, float]:
+        """测试当前全局模型（与0.py接口一致）"""
+        if self.test_loader is None:
+            raise ValueError("测试集未加载，请先调用load_testset方法")
 
-            if client_id not in self.client_state:
-                self.client_state[client_id] = {}
+        self.global_model.eval()
+        all_preds: List[int] = []
+        all_labels: List[int] = []
+        total_loss: float = 0.0
+        criterion = nn.CrossEntropyLoss()
 
-            self.client_state[client_id].update(state_dict)
-            self.client_n_data[client_id] = n_data
-            self.client_loss[client_id] = loss
+        with torch.no_grad():
+            for data, labels in self.test_loader:
+                data, labels = data.to(self.device), labels.to(self.device)
+                outputs = self.global_model(data)
+                loss = criterion(outputs, labels)
+                total_loss += loss.item()
+                preds = torch.argmax(outputs, dim=1)
+                all_preds.extend(preds.cpu().numpy().tolist())
+                all_labels.extend(labels.cpu().numpy().tolist())
 
-            if client_id in self.client_info:
-                self.client_info[client_id]['last_seen'] = datetime.now().isoformat()
+        return {
+            'accuracy': accuracy_score(all_labels, all_preds),
+            'precision': precision_score(all_labels, all_preds, average='macro'),
+            'recall': recall_score(all_labels, all_preds, average='macro'),
+            'f1': f1_score(all_labels, all_preds, average='macro'),
+            'loss': total_loss / len(self.test_loader)
+        }
 
-            return True
+    def select_clients(self, client_ids: List[str], fraction: float = 0.5) -> List[str]:
+        """选择客户端（与0.py接口一致）"""
+        if not client_ids:
+            return []
 
-        except Exception as e:
-            print(f"处理原始参数时出错: {str(e)}")
-            return False
+        num_select: int = max(1, int(len(client_ids) * fraction))
+        self.selected_clients = np.random.choice(client_ids, num_select, replace=False).tolist()
+        self.total_data_size = sum(self.clients_data_size.get(cid, 0) for cid in self.selected_clients)
+        return self.selected_clients
 
-    # 序列化与编码 - 保持向后兼容
-    def _serialize(self, data):
-        """序列化数据（网络模式使用）"""
+    def agg(self) -> Tuple[Dict[str, Tensor], float]:
+        """聚合客户端模型（与0.py接口一致）"""
+        if not self.selected_clients or self.total_data_size == 0:
+            return self.global_model.state_dict(), 0.0
+
+        global_params: Dict[str, Tensor] = self.global_model.state_dict()
+        for key in global_params:
+            global_params[key] = torch.zeros_like(global_params[key], device=self.device)
+
+        # 加权平均聚合
+        for cid in self.selected_clients:
+            client_params = self.clients_params.get(cid)
+            data_size = self.clients_data_size.get(cid, 0)
+
+            if client_params is None or data_size == 0:
+                continue
+
+            weight: float = data_size / self.total_data_size
+            for key in global_params:
+                global_params[key] += client_params[key].to(self.device) * weight
+
+        # 更新全局模型
+        self.global_model.load_state_dict(global_params)
+        self.current_round += 1
+        self.global_model_history[self.current_round] = global_params
+
+        # 计算平均损失
+        avg_loss: float = sum(self.clients_loss.get(cid, 0.0) for cid in self.selected_clients) / len(
+            self.selected_clients)
+        return global_params, avg_loss
+
+    def rec(self, client_id: str, params: Union[Dict[str, Tensor], bytes], loss: float, data_size: int) -> None:
+        """接收客户端数据（与0.py接口一致）"""
+        # 根据序列化设置处理参数
+        if self.enable_serialization:
+            processed_params: Dict[str, Tensor]
+            if isinstance(params, bytes):
+                deserialized = self._deserialize(params)
+                processed_params = self._decode(deserialized)
+            else:
+                processed_params = self._decode(params)  # type: ignore
+        else:
+            processed_params = params if isinstance(params, dict) else {}  # type: ignore
+
+        self.clients_params[client_id] = processed_params
+        self.clients_loss[client_id] = loss
+        self.clients_data_size[client_id] = data_size
+
+        # 网络模式下更新客户端活跃时间
+        if not self.local and client_id in self.client_info:
+            self.client_info[client_id] = (self.client_info[client_id][0],
+                                           self.client_info[client_id][1],
+                                           time.time())
+
+    def flush(self) -> 'FedServer':
+        """清空客户端状态（与0.py接口一致）"""
+        self.clients_params.clear()
+        self.clients_loss.clear()
+        self.selected_clients = []
+        self.total_data_size = 0
+        return self
+
+    # 网络功能
+    def start_server(self) -> None:
+        """启动服务器（网络模式）"""
         if self.local:
-            raise RuntimeError("本地模式下不支持序列化（原始版本兼容行为）")
-        try:
-            return pickle.dumps(data)
-        except Exception as e:
-            raise RuntimeError(f"序列化失败: {str(e)}")
+            raise ValueError("本地模式下不能启动网络服务器，请设置local=False")
 
-    def _deserialize(self, data):
-        """反序列化数据（网络模式使用）"""
+        self.running = True
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind((self.ip, self.port))
+        self.server_socket.listen(5)
+        print(f"服务器启动，监听 {self.ip}:{self.port}")
+
+        # 启动监听线程
+        threading.Thread(target=self._listen_for_connections, daemon=True).start()
+
+    def stop_server(self) -> None:
+        """停止服务器（网络模式）"""
         if self.local:
-            raise RuntimeError("本地模式下不支持反序列化（原始版本兼容行为）")
-        try:
-            return pickle.loads(data)
-        except pickle.UnpicklingError as e:
-            raise ValueError(f"反序列化失败: 数据格式不正确 - {str(e)}")
-        except Exception as e:
-            raise RuntimeError(f"反序列化过程中发生错误: {str(e)}")
+            return
 
-    def _encode(self, data):
-        """编码数据（为加密扩展设计）"""
-        # 原始版本行为：不进行编码处理
-        return data
-
-    def _decode(self, data):
-        """解码数据（为加密扩展设计）"""
-        # 原始版本行为：不进行解码处理
-        return data
-
-    # 网络功能 - 保持原始接口
-    def start_server(self):
-        if self.local:
-            raise RuntimeError("本地模式下不支持启动服务器")
-
-        self.is_running = True
-        self.connection_thread = threading.Thread(
-            target=self._listen_for_connections,
-            daemon=True
-        )
-        self.connection_thread.start()
-        print(f"服务器已启动，监听 {self.server_ip}:{self.server_port}")
-
-    def stop_server(self):
-        if self.local:
-            raise RuntimeError("本地模式下不支持停止服务器")
-
-        self.is_running = False
-        if self.connection_thread and self.connection_thread.is_alive():
-            self.connection_thread.join()
-        for thread in self.client_handlers:
-            if thread.is_alive():
-                thread.join()
+        self.running = False
+        if self.server_socket:
+            self.server_socket.close()
         print("服务器已停止")
 
-    def _listen_for_connections(self):
-        if self.local:
-            raise RuntimeError("本地模式下禁用连接监听功能")
-
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    def _listen_for_connections(self) -> None:
+        """监听客户端连接"""
+        while self.running:
             try:
-                s.bind((self.server_ip, self.server_port))
-                s.listen(5)
-                s.settimeout(1.0)
-
-                while self.is_running:
-                    try:
-                        conn, addr = s.accept()
-                        client_thread = threading.Thread(
-                            target=self._handle_client_connection,
-                            args=(conn, addr),
-                            daemon=True
-                        )
-                        client_thread.start()
-                        self.client_handlers.append(client_thread)
-                    except socket.timeout:
-                        continue
-                    except Exception as e:
-                        print(f"处理连接时出错: {str(e)}")
-                        continue
+                client_socket, addr = self.server_socket.accept()  # type: ignore
+                threading.Thread(target=self._handle_client_connection,
+                                 args=(client_socket, addr),
+                                 daemon=True).start()
             except Exception as e:
-                print(f"服务器监听出错: {str(e)}")
+                if self.running:
+                    print(f"连接错误: {e}")
 
-    def _handle_client_connection(self, conn, addr):
-        if self.local:
-            raise RuntimeError("本地模式下禁用连接处理功能")
-
-        client_id = None
+    def _handle_client_connection(self, client_socket: socket.socket, addr: Tuple[str, int]) -> None:
+        """处理客户端连接"""
         try:
-            data_len_bytes = conn.recv(4)
-            if not data_len_bytes:
-                conn.close()
-                return
-
-            data_len = struct.unpack('>I', data_len_bytes)[0]
-            data = b''
-            while len(data) < data_len:
-                chunk = conn.recv(min(data_len - len(data), 4096))
-                if not chunk:
-                    conn.close()
-                    return
-                data += chunk
-
-            decoded_data = self._decode(data)
-            handshake_info = self._deserialize(decoded_data)
-            client_id = self._process_handshake(conn, addr, handshake_info)
-            if not client_id:
-                conn.close()
-                return
-
-            while self.is_running and client_id in self.client_list:
-                try:
-                    msg_len_bytes = conn.recv(4)
-                    if not msg_len_bytes:
-                        break
-
-                    msg_len = struct.unpack('>I', msg_len_bytes)[0]
-                    msg_data = b''
-                    while len(msg_data) < msg_len:
-                        chunk = conn.recv(min(msg_len - len(msg_data), 4096))
-                        if not chunk:
-                            break
-                        msg_data += chunk
-
-                    if len(msg_data) != msg_len:
-                        break
-
-                    decoded_msg = self._decode(msg_data)
-                    message = self._deserialize(decoded_msg)
-
-                    if message.get('type') == 'parameters':
-                        self.rec(serialized_data=msg_data)
-                        conn.sendall(b'RECEIVED')
-                    elif message.get('type') == 'wait':
-                        self._handle_wait_request(client_id, message['round'], conn)
-                    elif message.get('type') == 'get_model':
-                        model = self.global_model_history.get(message['round'], self.model.state_dict())
-                        response_data = self._serialize({
-                            'type': 'model_response',
-                            'status': 'success',
-                            'model_state': model
-                        })
-                        encoded_response = self._encode(response_data)
-                        conn.sendall(struct.pack('>I', len(encoded_response)) + encoded_response)
-                    elif message.get('type') == 'disconnect':
-                        break
-
-                except Exception as e:
-                    print(f"处理客户端 {client_id} 消息时出错: {str(e)}")
+            while self.running:
+                data: bytes = client_socket.recv(4096)
+                if not data:
                     break
 
-        finally:
-            if client_id and client_id in self.client_list:
-                self.client_list.remove(client_id)
-            if client_id and client_id in self.client_info:
-                del self.client_info[client_id]
-            try:
-                conn.close()
-            except:
-                pass
-
-    def _process_handshake(self, conn, addr, handshake_info):
-        try:
-            client_id = str(uuid.uuid4())
-            self.client_info[client_id] = {
-                'name': handshake_info['client_name'],
-                'ip': handshake_info['client_ip'],
-                'port': handshake_info['client_port'],
-                'address': addr,
-                'timestamp': handshake_info['timestamp'],
-                'last_seen': datetime.now().isoformat(),
-                'capabilities': handshake_info['capabilities'],
-                'socket': conn,
-                'round': self.round
-            }
-
-            self.client_list.append(client_id)
-            print(f"新客户端连接: {handshake_info['client_name']} (ID: {client_id})")
-
-            response_data = self._serialize({
-                'status': 'success',
-                'client_id': client_id,
-                'supported_algorithms': self.supported_algorithms,
-                'round': self.round
-            })
-            encoded_response = self._encode(response_data)
-            conn.sendall(struct.pack('>I', len(encoded_response)) + encoded_response)
-            return client_id
-
-        except Exception as e:
-            print(f"处理握手时出错: {str(e)}")
-            error_data = self._serialize({
-                'status': 'error',
-                'error': str(e)
-            })
-            encoded_error = self._encode(error_data)
-            conn.sendall(struct.pack('>I', len(encoded_error)) + encoded_error)
-            return None
-
-    def _handle_wait_request(self, client_id, round_num, conn):
-        if self.round_ready.get(round_num, False):
-            new_model = self.global_model_history.get(round_num + 1, self.model.state_dict())
-            response_data = self._serialize({
-                'type': 'new_model',
-                'status': 'success',
-                'model_state': new_model,
-                'round': round_num,
-                'next_round': round_num + 1
-            })
-            encoded_response = self._encode(response_data)
-            conn.sendall(struct.pack('>I', len(encoded_response)) + encoded_response)
-        else:
-            if client_id not in self.waiting_clients[round_num]:
-                self.waiting_clients[round_num].append(client_id)
-                self.client_info[client_id]['socket'] = conn
-
-    # 通用功能 - 保持原始行为
-    def flush(self):
-        self.n_data = 0
-        self.client_state = {}
-        self.client_n_data = {}
-        self.client_loss = {}
-        if not self.local:
-            self.round_data.clear()
-            self.waiting_clients.clear()
-            self.round_ready.clear()
-
-    # 新增兼容层：支持原始版本未公开的内部调用模式
-    def _handle_local_request(self, client_id, request):
-        """处理本地模式下的客户端请求（兼容原始版本交互方式）"""
-        try:
-            # 模拟网络请求处理
-            if isinstance(request, dict) and request.get('type') == 'wait':
-                round_num = request['round']
-                if self.round_ready.get(round_num, False):
-                    new_model = self.global_model_history.get(round_num + 1, self.model.state_dict())
-                    return {
-                        'type': 'new_model',
-                        'status': 'success',
-                        'model_state': new_model,
-                        'round': round_num,
-                        'next_round': round_num + 1
-                    }
+                # 反序列化请求
+                request: Dict[str, Any]
+                if self.enable_serialization:
+                    request = self._deserialize(data)
                 else:
-                    if client_id not in self.waiting_clients[round_num]:
-                        self.waiting_clients[round_num].append(client_id)
-                    return {'status': 'waiting', 'round': round_num}
-            return {'status': 'error', 'error': '未知请求类型'}
+                    request = data  # type: ignore
+
+                response: Dict[str, Any] = self._process_request(request, addr)
+
+                # 发送响应
+                send_data: Union[bytes, Dict[str, Any]]
+                if self.enable_serialization:
+                    send_data = self._serialize(response)
+                else:
+                    send_data = response
+
+                client_socket.sendall(
+                    send_data if isinstance(send_data, bytes) else str(send_data).encode())  # type: ignore
         except Exception as e:
-            return {'status': 'error', 'error': str(e)}
+            print(f"客户端处理错误 {addr}: {e}")
+        finally:
+            client_socket.close()
+
+    def _process_request(self, request: Dict[str, Any], addr: Tuple[str, int]) -> Dict[str, Any]:
+        """处理客户端请求"""
+        if request.get('type') == 'handshake':
+            return self._process_handshake(addr)
+        elif request.get('type') == 'get_global_model':
+            return self._process_model_request(request)
+        elif request.get('type') == 'upload_local_model':
+            return self._process_model_upload(request)
+        else:
+            return {'status': 'error', 'message': '未知请求类型'}
+
+    def _process_handshake(self, addr: Tuple[str, int]) -> Dict[str, Any]:
+        """处理客户端握手"""
+        client_id: str = f"client_{len(self.client_info) + 1}"
+        self.client_info[client_id] = (addr[0], addr[1], time.time())
+        return {
+            'status': 'success',
+            'client_id': client_id,
+            'supported_algorithms': self.supported_algorithms
+        }
+
+    def _process_model_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """处理模型请求"""
+        client_id: Optional[str] = request.get('client_id')
+        round_num: int = request.get('round', self.current_round)
+
+        if client_id is None or client_id not in self.client_info:
+            return {'status': 'error', 'message': '未认证的客户端'}
+
+        if round_num not in self.global_model_history:
+            return {'status': 'error', 'message': '无效的轮次号'}
+
+        model_params: Dict[str, Tensor] = self.global_model_history[round_num]
+        if self.enable_serialization:
+            model_params = self._encode(model_params)
+
+        return {
+            'status': 'success',
+            'model_params': model_params,
+            'current_round': self.current_round
+        }
+
+    def _process_model_upload(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """处理模型上传"""
+        client_id: Optional[str] = request.get('client_id')
+        if client_id is None or client_id not in self.client_info:
+            return {'status': 'error', 'message': '未认证的客户端'}
+
+        # 处理上传的模型参数
+        params: Any = request.get('model_params')
+        if self.enable_serialization and params is not None:
+            params = self._decode(params)
+
+        # 调用rec方法接收参数（保持接口兼容）
+        if isinstance(params, dict) and isinstance(request.get('loss'), (int, float)) and isinstance(
+                request.get('data_size'), int):
+            self.rec(client_id, params, request['loss'], request['data_size'])
+            return {'status': 'success', 'message': '模型已接收'}
+        else:
+            return {'status': 'error', 'message': '无效的模型参数'}
+
+    # 序列化和编码工具方法
+    def _serialize(self, data: Any) -> bytes:
+        """序列化数据（将Python对象转换为可传输的字节流）"""
+        if not self.enable_serialization:
+            return str(data).encode() if not isinstance(data, bytes) else data
+        return pickle.dumps(data)
+
+    def _deserialize(self, data: bytes) -> Any:
+        """反序列化数据（将字节流转换回Python对象）"""
+        if not self.enable_serialization:
+            return data.decode()
+        return pickle.loads(data)
+
+    def _encode(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
+        """
+        编码数据（扩展接口）
+
+        用于在序列化前对数据进行处理，如添加差分隐私噪声、数据压缩或加密等。
+        子类可重写此方法实现特定的编码逻辑。
+        """
+        if not self.enable_serialization:
+            return data
+        return data
+
+    def _decode(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
+        """
+        解码数据（扩展接口）
+
+        用于在反序列化后对数据进行处理，如解密、去噪或数据恢复等。
+        子类可重写此方法实现特定的解码逻辑。
+        """
+        if not self.enable_serialization:
+            return data
+        return data
