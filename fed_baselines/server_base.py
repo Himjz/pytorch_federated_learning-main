@@ -1,22 +1,22 @@
+import pickle
+import socket
+import struct
+import threading
+import uuid
+from collections import defaultdict
+from datetime import datetime
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 from sklearn.metrics import recall_score, f1_score, precision_score
 from torch.utils.data import DataLoader
-import socket
-import pickle
-import struct
-import threading
-from datetime import datetime
-import uuid
-from collections import defaultdict
-from typing import Dict, List, Tuple, Optional, Any
 
 from utils.fed_utils import init_model
 
 
 class FedServer(object):
-    def __init__(self, model_name, dataset_info: list | tuple,
+    def __init__(self, client_list, model_name, dataset_info: list | tuple,
                  server_ip: str = '127.0.0.3', server_port: int = 9999,
                  local: bool = True):
         """
