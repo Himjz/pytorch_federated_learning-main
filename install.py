@@ -107,7 +107,7 @@ def get_cuda_info() -> Tuple[bool, Optional[str]]:
             print(f"通过 PyTorch 检测到 CUDA 版本: {cuda_version}")
             return cuda_available, cuda_version
 
-    except ImportError|NameError:
+    except (ImportError, NameError):
         logging.info("PyTorch未安装，跳过CUDA检查")
         print("PyTorch未安装，将在后续步骤安装")
     except Exception as e:
@@ -157,12 +157,14 @@ def get_sources() -> Tuple[List[str], List[str]]:
     logging.info(f"基础包源列表: {base_sources}")
     logging.info(f"PyTorch源列表（基础）: {torch_sources}")
 
-    # 根据CUDA版本调整PyTorch源
+    # 根据CUDA版本调整PyTorch源：新增CUDA 12.9支持，映射为cu128（PyTorch暂未单独提供cu129，兼容使用cu128）
     cuda_available, cuda_version = get_cuda_info()
     if cuda_available and cuda_version:
         try:
             cuda_float = float(cuda_version)
+            # 新增12.9版本映射，优先级高于其他版本
             version_mapping = [
+                (12.9, "cu129"),
                 (12.8, "cu128"),
                 (12.6, "cu126"),
                 (12.4, "cu124"),
@@ -180,7 +182,8 @@ def get_sources() -> Tuple[List[str], List[str]]:
                 configured_torch_sources = [
                     f"{source}/{cuda_folder}" for source in torch_sources
                 ]
-                logging.info(f"配置PyTorch源（CUDA {cuda_folder}）: {configured_torch_sources}")
+                logging.info(f"配置PyTorch源（CUDA {cuda_folder}，兼容{cuda_version}）: {configured_torch_sources}")
+                print(f"配置PyTorch源（CUDA {cuda_folder}，兼容当前检测到的{cuda_version}）")
                 return configured_torch_sources, base_sources
             else:
                 logging.warning(f"CUDA {cuda_version} 版本较旧，使用CPU版本PyTorch源")
