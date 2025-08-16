@@ -8,7 +8,8 @@ from utils.models import *
 
 
 class ScaffoldClient(FedClient):
-    def __init__(self, name, epoch, model_name, dataset_info: list|tuple,                 target_ip: str = '127.0.0.3', port: int = 9999,
+    def __init__(self, name, epoch, model_name, dataset_info: list|tuple,
+                 target_ip: str = '127.0.0.3', port: int = 9999,
                  local_ip: str = None, local_port: int = None,
                  return_packed: bool = False, local: bool = True
                  ):
