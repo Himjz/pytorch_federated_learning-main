@@ -17,14 +17,17 @@ class DataSplitter(DatasetLoader):
         super().__init__(**kwargs)
         self.clients = {}  # 存储客户端
         self.is_divided = False  # 标记是否已划分
+        # 新增分布类型和参数属性（从父类继承）
+        # self.distribution_type: str = "default" 或 "dirichlet"
+        # self.distribution_param: 对于default是原来的k值，对于dirichlet是浓度参数alpha
 
     def divide(self, create: bool = False) -> Union[Tuple[Dict, Any], 'DataSplitter']:
         """
         将数据集划分给多个客户端
-        
+
         Args:
             create: 是否返回自身而非划分结果
-            
+
         Returns:
             如果create为True，返回自身；否则返回划分后的训练集配置和测试集
         """
@@ -78,7 +81,8 @@ class DataSplitter(DatasetLoader):
             print(f"警告: 可用类别数少于请求的每个客户端类别数，已调整为 {adjusted_num_local_class}")
             self.num_local_class = adjusted_num_local_class
 
-        client_classes = self._assign_classes_to_clients()
+        # 根据分布类型分配客户端类别
+        client_classes = self._assign_classes_to_clients(valid_classes)
 
         class_assign_counts = self._count_class_assignments(client_classes)
 
@@ -127,14 +131,42 @@ class DataSplitter(DatasetLoader):
 
         return class_indices
 
-    def _assign_classes_to_clients(self) -> Dict[str, List[int]]:
-        """为每个客户端分配类别"""
+    def _assign_classes_to_clients(self, valid_classes: List[int]) -> Dict[str, List[int]]:
+        """
+        为每个客户端分配类别
+        根据distribution_type使用不同的分配策略
+        """
         client_classes = {}
-        unique_labels = list(torch.unique(self.base_labels).numpy())
+        num_classes = len(valid_classes)
+        class_indices = {cls: idx for idx, cls in enumerate(valid_classes)}
 
-        for i in range(self.num_client):
-            client_class_indices = [(i * self.k + j) % len(unique_labels) for j in range(self.num_local_class)]
-            client_classes[f'f_{i:05d}'] = [unique_labels[idx] for idx in client_class_indices]
+        if self.distribution_type == "default":
+            # 使用原有的轮询策略，参数来自distribution_param
+            k = self.distribution_param if self.distribution_param is not None else 1
+            for i in range(self.num_client):
+                client_class_indices = [(i * k + j) % num_classes for j in range(self.num_local_class)]
+                client_classes[f'f_{i:05d}'] = [valid_classes[idx] for idx in client_class_indices]
+
+        elif self.distribution_type == "dirichlet":
+            # 使用Dirichlet分布实现Non-IID分配
+            alpha = self.distribution_param if self.distribution_param is not None else 0.5
+            print(f"使用Dirichlet分布分配类别，浓度参数alpha={alpha}")
+
+            # 为每个客户端生成类别分布
+            dirichlet_samples = np.random.dirichlet(
+                alpha=[alpha] * num_classes,
+                size=self.num_client
+            )
+
+            for i in range(self.num_client):
+                # 按概率排序，取概率最高的num_local_class个类别
+                class_probs = dirichlet_samples[i]
+                top_classes_idx = np.argsort(class_probs)[-self.num_local_class:][::-1]
+                client_classes[f'f_{i:05d}'] = [valid_classes[idx] for idx in top_classes_idx]
+
+        else:
+            raise ValueError(f"不支持的分布类型: {self.distribution_type}，请使用'default'或'dirichlet'")
+
         return client_classes
 
     def _count_class_assignments(self, client_classes: Dict[str, List[int]]) -> Dict[int, int]:
@@ -243,35 +275,102 @@ class DataSplitter(DatasetLoader):
             )
 
     def _print_report(self) -> None:
-        """打印数据集划分报告"""
-        print(f"\n===== 联邦数据集报告（设备: {self.device}） =====")
-        print(f"数据集名称: {self.dataset_name}")
-        print(f"图像尺寸: {self.image_size}, 通道数: {self.in_channels}")
+        """打印详细的数据集划分报告"""
+        # 收集所有客户端的样本数量
+        client_sample_counts = [len(client) for client in self.clients.values()]
+        total_samples = sum(client_sample_counts)
+        avg_samples = np.mean(client_sample_counts)
+        std_samples = np.std(client_sample_counts)
+        min_samples = np.min(client_sample_counts)
+        max_samples = np.max(client_sample_counts)
 
-        if self.subset_params is not None:
-            subset_type, subset_value = self.subset_params
-            print(f"选择类别: 类型={subset_type}, 数量={subset_value}")
-            print(f"选中的类别: {self.selected_classes}")
-            print(f"选中的类别数量: {len(self.selected_classes)}")
+        # 计算类别分布统计
+        class_distribution = defaultdict(int)
+        client_class_coverage = []
 
-        if self.cut_ratio is not None:
-            print(f"裁剪样本比例: {self.cut_ratio}")
+        for client in self.clients.values():
+            # 统计每个客户端的类别分布
+            client_classes = defaultdict(int)
+            for idx in client.indices:
+                cls = self._to_numpy_label(self.base_labels[idx])
+                class_distribution[cls] += 1
+                client_classes[cls] += 1
 
-        if self.augmentation:
-            print(f"数据增强: 已启用")
+            # 计算每个客户端的类别覆盖率
+            client_class_count = len(client_classes)
+            client_class_coverage.append(client_class_count / len(self.selected_classes) * 100)
 
-        print(f"总样本数: {len(self)}")
-        print(f"测试集样本数: {len(self.testset) if self.testset else 0}")
-        print(f"客户端数量: {len(self.clients)}")
+        avg_class_coverage = np.mean(client_class_coverage)
 
+        # 打印报告
+        print("\n" + "=" * 60)
+        print(f"          联邦数据集划分详细报告 (设备: {self.device})          ")
+        print("=" * 60)
+
+        # 基本信息部分
+        print("\n[基本信息]")
+        print(f"  数据集名称:         {self.dataset_name}")
+        print(f"  图像尺寸:           {self.image_size}, 通道数: {self.in_channels}")
+        print(f"  分布类型:           {self.distribution_type}")
+        print(f"  分布参数:           {self.distribution_param}")
+        print(f"  客户端数量:         {len(self.clients)} (请求数量: {self.num_client})")
+        print(f"  总样本数:           {total_samples}")
+        print(f"  测试集样本数:       {len(self.testset) if self.testset else 0}")
+
+        # 样本分布统计部分
+        print("\n[样本分布统计]")
+        print(f"  客户端平均样本数:   {avg_samples:.2f} ± {std_samples:.2f}")
+        print(f"  最小样本数客户端:   {min_samples}")
+        print(f"  最大样本数客户端:   {max_samples}")
+        print(f"  样本分布均衡性:     {1 - (std_samples / avg_samples) if avg_samples > 0 else 0:.4f}")
+
+        # 类别分布部分
+        print("\n[类别分布]")
+        print(f"  总类别数:           {len(self.selected_classes)}")
+        print(f"  客户端平均类别覆盖率: {avg_class_coverage:.2f}%")
+
+        print("\n  类别样本分布:")
+        total = sum(class_distribution.values())
+        for cls in sorted(class_distribution.keys()):
+            count = class_distribution[cls]
+            percentage = (count / total) * 100 if total > 0 else 0
+            print(f"    类别 {cls}: {count} 个样本 ({percentage:.2f}%)")
+
+        # 客户端策略分布部分
+        strategy_counts = defaultdict(int)
+        for client in self.clients.values():
+            strategy_counts[client.strategy] += 1
+
+        print("\n[客户端策略分布]")
+        for strategy, count in strategy_counts.items():
+            percentage = (count / len(self.clients)) * 100
+            print(f"  {strategy}: {count} 个客户端 ({percentage:.2f}%)")
+
+        # 恶意客户端报告部分
         malicious_clients = [c for c in self.clients.values() if c.strategy == 'malicious']
         if malicious_clients:
-            print("\n===== 标签准确率报告 =====")
+            print("\n[恶意客户端标签准确率]")
             total_accuracy = 0.0
             for client in malicious_clients:
                 acc = client.calculate_label_accuracy()
-                print(f"客户端 {client.client_id}: 准确率 = {acc:.4f}")
+                print(f"  客户端 {client.client_id}: {acc:.4f}")
                 total_accuracy += acc
 
             avg_accuracy = total_accuracy / len(malicious_clients)
-            print(f"恶意客户端平均准确率: {avg_accuracy:.4f}")
+            print(f"  平均准确率: {avg_accuracy:.4f}")
+
+        # 高级选项部分
+        print("\n[高级选项]")
+        if self.subset_params is not None:
+            subset_type, subset_value = self.subset_params
+            print(f"  选择类别:           类型={subset_type}, 数量={subset_value}")
+            print(f"  选中的类别:         {self.selected_classes}")
+
+        if self.cut_ratio is not None:
+            print(f"  裁剪样本比例:       {self.cut_ratio}")
+
+        print(f"  数据增强:           {'已启用' if self.augmentation else '未启用'}")
+
+        print("\n" + "=" * 60)
+        print("                报告结束                ")
+        print("=" * 60 + "\n")

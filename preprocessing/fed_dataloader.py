@@ -16,7 +16,7 @@ class UniversalDataLoader(DataSplitter):
                  num_client: int = 1,
                  num_local_class: int = 10,
                  untrusted_strategies: Optional[List[float]] = None,
-                 k: int = 1,
+                 distribution: Tuple[str, Union[int, float]] = ('default', 1),
                  print_report: bool = True,
                  device: Optional[torch.device] = None,
                  preload_to_gpu: bool = False,
@@ -36,7 +36,7 @@ class UniversalDataLoader(DataSplitter):
             num_client=num_client,
             num_local_class=num_local_class,
             untrusted_strategies=untrusted_strategies,
-            k=k,
+            distribution=distribution,
             print_report=print_report,
             device=device,
             preload_to_gpu=preload_to_gpu,
@@ -71,7 +71,8 @@ if __name__ == "__main__":
         size=32,
         augmentation=True,
         cut=0.8,  # 保留80%的样本
-        subset=('random', 3)  # 随机选择3个类别
+        subset=('random', 3),
+        distribution=('dirichlet', 0.3)
     )
 
     loader.load()

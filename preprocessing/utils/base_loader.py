@@ -19,7 +19,8 @@ class BaseDataLoader:
         self.num_client = kwargs.get('num_client', 1)
         self.num_local_class = kwargs.get('num_local_class', 10)
         self.untrusted_strategies = kwargs.get('untrusted_strategies', None)
-        self.k = kwargs.get('k', 1)
+        distribution = kwargs.get('distribution', ('default', 1))
+        self.distribution_type, self.distribution_param = distribution
 
         # 数据处理参数
         self.cut_ratio = kwargs.get('cut', None)
