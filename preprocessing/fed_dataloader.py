@@ -2,7 +2,7 @@ from typing import List, Dict, Tuple, Optional, Union, Any
 
 import torch
 
-from utils import DataSplitter
+from preprocessing.utils import DataSplitter
 
 
 class UniversalDataLoader(DataSplitter):
