@@ -2,10 +2,10 @@ from typing import List, Dict, Tuple, Optional, Union, Any
 
 import torch
 
-from preprocessing.utils import DataSplitter
+from preprocessing.utils import ExportingDataSplitter
 
 
-class UniversalDataLoader(DataSplitter):
+class UniversalDataLoader(ExportingDataSplitter):
     """
     通用联邦学习数据加载器，继承自DataSplitter，
     提供完整的数据加载、处理和联邦划分功能
@@ -29,7 +29,8 @@ class UniversalDataLoader(DataSplitter):
                  size: Optional[Union[int, Tuple[int, int]]] = None,
                  in_channels: Optional[int] = None,
                  augmentation: bool = False,
-                 augmentation_params: Optional[Dict[str, Any]] = None):
+                 augmentation_params: Optional[Dict[str, Any]] = None,
+                 export: bool = False):
         # 调用父类构造函数
         super().__init__(
             dataset_name=dataset_name,
@@ -49,7 +50,8 @@ class UniversalDataLoader(DataSplitter):
             size=size,
             in_channels=in_channels,
             augmentation=augmentation,
-            augmentation_params=augmentation_params
+            augmentation_params=augmentation_params,
+            export=export
         )
 
 
@@ -68,11 +70,11 @@ if __name__ == "__main__":
         device=device,
         preload_to_gpu=False,
         in_channels=1,
-        size=32,
         augmentation=True,
         cut=0.8,  # 保留80%的样本
         subset=('random', 3),
-        distribution=('dirichlet', 0.3)
+        distribution=('dirichlet', 0.3),
+        export=True
     )
 
     loader.load()

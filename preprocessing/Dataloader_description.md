@@ -1,9 +1,9 @@
-# 联邦学习数据加载器 (v5.0.1) 说明文档
+# 联邦学习数据加载器 (v5.2.0) 说明文档
 
 ## 概述
 
 联邦学习数据加载器（UniversalDataLoader
-v5.0.1）是一个高度可定制的工具，用于为联邦学习场景准备和分配数据集。该加载器支持多种标准数据集和自定义数据集，能够模拟不同的客户端数据分布，并支持各种客户端行为策略（包括恶意行为）。
+v5.2.0）是一个高度可定制的工具，用于为联邦学习场景准备和分配数据集。该加载器支持多种标准数据集和自定义数据集，能够模拟不同的客户端数据分布，并支持各种客户端行为策略（包括恶意行为）。
 
 ## 核心接口
 
@@ -36,16 +36,17 @@ v5.0.1）是一个高度可定制的工具，用于为联邦学习场景准备�
 | `size`                 | Union[int, Tuple[int, int]]   | 图像尺寸                                                                                             | None           |
 | `in_channels`          | int                           | 输入图像通道数                                                                                          | None           |
 | `augmentation`         | bool                          | 是否启用数据增强                                                                                         | False          |
+| `export`               | bool                          | 是否导出客户端数据集                                                                                       | False          |
 | `augmentation_params`  | Dict[str, Any]                | 数据增强参数                                                                                           | 见下文默认值         |
 
 **默认增强参数**：
 
 ```python
 {
-    'rotation': 15,        # 旋转角度
-    'translation': 0.1,    # 平移比例
-    'scale': 0.1,          # 缩放比例
-    'flip': True           # 是否水平翻转
+    'rotation': 15,  # 旋转角度
+    'translation': 0.1,  # 平移比例
+    'scale': 0.1,  # 缩放比例
+    'flip': True  # 是否水平翻转
 }
 ```
 
@@ -142,9 +143,9 @@ self.default_datasets = {
 def apply_strategy(self) -> None:
     # 现有策略...
     elif self.strategy == 'new_strategy':
-        # 实现新策略逻辑
-        self.new_strategy_param = self.strategy_ratio
-        # ...
+    # 实现新策略逻辑
+    self.new_strategy_param = self.strategy_ratio
+    # ...
 ```
 
 2. 在`utils/data_splitter.py`的`parse_strategy`方法中添加新策略解析：
@@ -175,11 +176,11 @@ def parse_strategy(strategy_code: Union[float, str]) -> Tuple[str, float]:
 def _get_augmentation_transform(self) -> List[transforms.transforms]:
     aug_transforms = []
     # 现有增强...
-    
+
     # 添加新的增强
     if self.augmentation_params.get('new_aug', False):
         aug_transforms.append(transforms.RandomSomething(...))
-    
+
     return aug_transforms
 ```
 
@@ -192,7 +193,7 @@ class CustomDataSplitter(DataSplitter):
     def _assign_classes_to_clients(self) -> Dict[str, List[int]]:
         # 实现自定义的类别分配逻辑
         pass
-        
+
     def _create_clients(self, client_classes, class_indices, class_assign_counts):
         # 实现自定义的客户端创建逻辑
         pass
@@ -201,6 +202,10 @@ class CustomDataSplitter(DataSplitter):
 然后在`fed_dataloader.py`中让`UniversalDataLoader`继承自这个新类。
 
 ## 版本历史
+
+v5.2.0:
+
+- 新增了数据导出功能
 
 v5.1.0:
 
