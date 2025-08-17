@@ -2,141 +2,130 @@ import pickle
 import socket
 from typing import Dict, List, Any, Optional, Union
 
-import torch.nn as nn
-import torch.optim as optim
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
 
-class FedClient:
-    def __init__(self,
-                 client_id: str,
-                 model_name: str,
-                 dataset_name: str,
-                 device: str = 'cpu',
-                 local: bool = True,
-                 server_ip: str = 'localhost',
-                 server_port: int = 5000,
-                 enable_serialization: Optional[bool] = None) -> None:
-        # 客户端基础属性
-        self.client_id: str = client_id
-        self.model_name: str = model_name
-        self.dataset_name: str = dataset_name
-        self.device: str = device
-        self.local_model: nn.Module = self._init_local_model()
-        self.train_loader: Optional[DataLoader[Dataset]] = None
-        self.val_loader: Optional[DataLoader[Dataset]] = None
-        self.epochs: int = 3
-        self.batch_size: int = 32
-        self.lr: float = 0.01
+from utils.fed_utils import init_model
+from utils.models import *
 
-        # 网络相关属性
-        self.local: bool = local  # 是否为本地模式
-        self.server_ip: str = server_ip
-        self.server_port: int = server_port
+
+class FedClient(object):
+    def __init__(self, name, epoch, model_name, dataset_info: list | tuple,
+                 local: bool = True, server_ip: str = '127.0.0.3', server_port: int = 9999,
+                 enable_serialization: Optional[bool] = None):
+        """
+        初始化联邦学习中的客户端
+        :param name: 客户端名称
+        :param epoch: 客户端本地训练的轮数
+        :param model_name: 客户端的本地模型名称
+        :param dataset_info: 数据集信息，包含(num_class, image_dim, image_channel)
+        :param local: 是否为本地模式
+        :param server_ip: 服务器IP地址
+        :param server_port: 服务器端口
+        :param enable_serialization: 是否启用序列化，网络模式下此参数无效
+        """
+        # 客户端网络信息
+        self.target_ip = server_ip
+        self.port = server_port
+        self.name = name
         self.socket: Optional[socket.socket] = None
         self.connected: bool = False
+
+        # 训练参数
+        self._epoch = epoch
+        self._batch_size = 50
+        self._lr = 0.001
+        self._momentum = 0.9
+        self.num_workers = 2
+        self.loss_rec = []
+        self.n_data = 0
+
+        # 数据集
+        self.trainset = None
+        self.train_loader: Optional[DataLoader[Dataset]] = None
+
+        # 模型相关
+        self._num_class, self._image_dim, self._image_channel = dataset_info
+        self.model_name = model_name
+        self.model = init_model(model_name=self.model_name, num_class=self._num_class,
+                                image_channel=self._image_channel)
+
+        # 计算模型参数数量
+        model_parameters = filter(lambda p: p.requires_grad, self.model.parameters())
+        self.param_len = sum([np.prod(p.size()) for p in model_parameters])
+
+        # 设备配置
+        gpu = 0
+        self._device = torch.device(
+            f"cuda:{gpu}" if torch.cuda.is_available() and gpu != -1 else "cpu"
+        )
+
+        # 联邦学习模式配置
+        self.local = local  # 是否为本地模式
+
+        # 序列化开关逻辑
+        # 本地模式: 默认关闭，可通过参数修改
+        # 网络模式: 强制开启，忽略用户输入的参数
+        if not self.local:  # 网络模式
+            self.enable_serialization = True
+            # 如果用户在网络模式下指定了序列化参数，给出警告
+            if enable_serialization is not None and not enable_serialization:
+                import warnings
+                warnings.warn("网络模式下序列化始终开启，忽略 enable_serialization=False 的设置")
+        else:  # 本地模式
+            # 本地模式下使用用户指定的值，默认关闭
+            self.enable_serialization = enable_serialization if enable_serialization is not None else False
+
         self.supported_algorithms: List[str] = ['fedavg', 'scaffold', 'fedprox']
         self.selected_algorithm: str = 'fedavg'
 
-        # 序列化控制参数
-        if enable_serialization is None:
-            self.enable_serialization: bool = not self.local
-        else:
-            # 网络模式下忽略用户设置，强制开启
-            self.enable_serialization = enable_serialization if self.local else True
+    def load_trainset(self, trainset):
+        """客户端加载训练数据集"""
+        self.trainset = trainset
+        self.n_data = len(trainset)
+        self.train_loader = DataLoader(
+            trainset,
+            batch_size=self._batch_size,
+            shuffle=True,
+            num_workers=self.num_workers
+        )
 
-    def _init_local_model(self) -> nn.Module:
-        """初始化本地模型"""
-        if self.model_name == 'cnn' and self.dataset_name == 'mnist':
-            model = nn.Sequential(
-                nn.Conv2d(1, 32, kernel_size=3),
-                nn.ReLU(),
-                nn.MaxPool2d(2),
-                nn.Flatten(),
-                nn.Linear(13 * 13 * 32, 128),
-                nn.ReLU(),
-                nn.Linear(128, 10)
-            )
-        else:
-            model = nn.Linear(20, 10)
+    def update(self, model_state_dict):
+        """客户端从服务器更新模型"""
+        self.model = init_model(model_name=self.model_name, num_class=self._num_class,
+                                image_channel=self._image_channel)
+        self.model.load_state_dict(model_state_dict)
 
-        return model.to(self.device)
+    def train(self):
+        """客户端在本地数据集上训练模型"""
+        if self.trainset is None:
+            raise ValueError("未加载训练数据，请先调用load_trainset方法")
 
-    def load_data(self, train_data: Dataset, val_data: Optional[Dataset] = None) -> 'FedClient':
-        """加载本地数据集"""
-        self.train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=True)
-        if val_data:
-            self.val_loader = DataLoader(val_data, batch_size=self.batch_size)
-        return self
+        train_loader = DataLoader(self.trainset, batch_size=self._batch_size, shuffle=True)
 
-    def set_train_params(self,
-                         epochs: Optional[int] = None,
-                         batch_size: Optional[int] = None,
-                         lr: Optional[float] = None) -> 'FedClient':
-        """设置训练参数"""
-        if epochs is not None:
-            self.epochs = epochs
-        if batch_size is not None:
-            self.batch_size = batch_size
-        if lr is not None:
-            self.lr = lr
-        return self
+        self.model.to(self._device)
+        optimizer = torch.optim.SGD(self.model.parameters(), lr=self._lr, momentum=self._momentum)
+        loss_func = nn.CrossEntropyLoss()
 
-    def train(self, global_model_params: Optional[Union[Dict[str, Tensor], bytes]] = None) -> Dict[
-        str, Union[Dict[str, Tensor], bytes, float, int]]:
-        """本地训练模型"""
-        # 如果提供了全局模型参数，先加载
-        if global_model_params is not None:
-            # 根据序列化设置处理参数
-            processed_params: Dict[str, Tensor]
-            if self.enable_serialization:
-                if isinstance(global_model_params, bytes):
-                    deserialized = self._deserialize(global_model_params)
-                    processed_params = self._decode(deserialized)
-                else:
-                    processed_params = self._decode(global_model_params)  # type: ignore
-            else:
-                processed_params = global_model_params if isinstance(global_model_params, dict) else {}  # type: ignore
+        # 训练过程
+        for epoch in range(self._epoch):
+            for step, (x, y) in enumerate(train_loader):
+                with torch.no_grad():
+                    b_x = x.to(self._device)
+                    b_y = y.to(self._device)
 
-            self.local_model.load_state_dict(processed_params)
+                with torch.enable_grad():
+                    self.model.train()
+                    output = self.model(b_x)
+                    loss = loss_func(output, b_y.long())
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
 
-        self.local_model.train()
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.SGD(self.local_model.parameters(), lr=self.lr)
+        return self.model.state_dict(), self.n_data, loss.data.cpu().numpy()
 
-        total_loss: float = 0.0
-        for epoch in range(self.epochs):
-            epoch_loss: float = 0.0
-            if self.train_loader is None:
-                raise ValueError("未加载训练数据，请先调用load_data方法")
-
-            for data, labels in self.train_loader:
-                data, labels = data.to(self.device), labels.to(self.device)
-                optimizer.zero_grad()
-                outputs = self.local_model(data)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item()
-
-            avg_epoch_loss: float = epoch_loss / len(self.train_loader)
-            total_loss += avg_epoch_loss
-
-        # 返回训练后的参数、平均损失和数据量
-        local_params: Dict[str, Tensor] = self.local_model.state_dict()
-        processed_output: Union[Dict[str, Tensor], bytes] = local_params
-
-        if self.enable_serialization:
-            encoded = self._encode(local_params)
-            processed_output = self._serialize(encoded)
-
-        return {
-            'params': processed_output,
-            'loss': total_loss / self.epochs,
-            'data_size': len(self.train_loader.dataset)
-        }
-
+    # 网络通信功能
     def connect_to_server(self) -> bool:
         """连接到服务器（网络模式）"""
         if self.local:
@@ -144,36 +133,29 @@ class FedClient:
 
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.connect((self.server_ip, self.server_port))
+            self.socket.connect((self.target_ip, self.port))
             self.connected = True
 
-            # 握手
+            # 握手信息
             handshake_msg: Dict[str, Any] = {
                 'type': 'handshake',
-                'client_id': self.client_id,
-                'supported_algorithms': self.supported_algorithms
+                'client_id': self.name,
+                'supported_algorithms': self.supported_algorithms,
+                'serialization_enabled': self.enable_serialization
             }
 
-            send_data: Union[bytes, Dict[str, Any]]
-            if self.enable_serialization:
-                send_data = self._serialize(handshake_msg)
-            else:
-                send_data = handshake_msg
+            # 应用编码和序列化
+            encoded_data = self._encode(handshake_msg)
+            send_data = self._serialize(encoded_data)
+            self.socket.sendall(send_data)
 
-            self.socket.sendall(send_data if isinstance(send_data, bytes) else str(send_data).encode())  # type: ignore
-
-            # 接收响应
-            response_data: bytes = self.socket.recv(4096)
-            response: Dict[str, Any]
-
-            if self.enable_serialization:
-                response = self._deserialize(response_data)
-            else:
-                response = eval(response_data.decode())  # 仅用于本地非序列化模式
+            # 接收响应并反序列化、解码
+            response_data = self.socket.recv(4096)
+            deserialized_data = self._deserialize(response_data)
+            response = self._decode(deserialized_data)
 
             if response.get('status') == 'success':
-                self.client_id = response.get('client_id', self.client_id)
-                print(f"客户端 {self.client_id} 成功连接到服务器")
+                print(f"客户端 {self.name} 成功连接到服务器")
                 return True
             else:
                 print(f"连接失败: {response.get('message', '未知错误')}")
@@ -192,10 +174,10 @@ class FedClient:
         self.connected = False
         self.socket = None
 
-    def get_global_model(self, round_num: Optional[int] = None) -> Optional[Union[Dict[str, Tensor], bytes]]:
+    def get_global_model(self, round_num: Optional[int] = None) -> Optional[Dict[str, Tensor]]:
         """从服务器获取全局模型"""
         if self.local:
-            return None  # 本地模式下通过其他方式获取全局模型
+            return None  # 本地模式下通过其他方式获取
 
         if not self.connected and not self.connect_to_server():
             return None
@@ -203,30 +185,24 @@ class FedClient:
         try:
             request: Dict[str, Any] = {
                 'type': 'get_global_model',
-                'client_id': self.client_id,
+                'client_id': self.name,
                 'round': round_num
             }
 
-            send_data: Union[bytes, Dict[str, Any]]
-            if self.enable_serialization:
-                send_data = self._serialize(request)
-            else:
-                send_data = request
+            # 应用编码和序列化
+            encoded_data = self._encode(request)
+            send_data = self._serialize(encoded_data)
+            self.socket.sendall(send_data)
 
-            self.socket.sendall(send_data if isinstance(send_data, bytes) else str(send_data).encode())  # type: ignore
-
-            response_data: bytes = self.socket.recv(4096)
-            response: Dict[str, Any]
-
-            if self.enable_serialization:
-                response = self._deserialize(response_data)
-            else:
-                response = eval(response_data.decode())  # 仅用于本地非序列化模式
+            # 接收响应并反序列化、解码
+            response_data = self.socket.recv(4096)
+            deserialized_data = self._deserialize(response_data)
+            response = self._decode(deserialized_data)
 
             if response.get('status') == 'success':
                 return response.get('model_params')
             else:
-                print(f"获取全局模型失败: {response.get('message', '未知错误')}")
+                print(f"获取全局模型失败: {response.get('message')}")
                 return None
 
         except Exception as e:
@@ -234,96 +210,67 @@ class FedClient:
             self.disconnect()
             return None
 
-    def upload_local_model(self, local_results: Dict[str, Union[Dict[str, Tensor], bytes, float, int]]) -> bool:
+    def upload_local_model(self, local_results: tuple[Dict[str, Tensor], int, float]) -> bool:
         """向服务器上传本地模型"""
         if self.local:
-            return True  # 本地模式下通过其他方式提交模型
+            return True  # 本地模式下通过其他方式提交
 
         if not self.connected and not self.connect_to_server():
             return False
 
         try:
+            model_params, data_size, loss = local_results
             request: Dict[str, Any] = {
                 'type': 'upload_local_model',
-                'client_id': self.client_id,
-                'model_params': local_results['params'],
-                'loss': local_results['loss'],
-                'data_size': local_results['data_size']
+                'client_id': self.name,
+                'model_params': model_params,
+                'loss': loss,
+                'data_size': data_size
             }
 
-            send_data: Union[bytes, Dict[str, Any]]
-            if self.enable_serialization:
-                send_data = self._serialize(request)
-            else:
-                send_data = request
+            # 应用编码和序列化
+            encoded_data = self._encode(request)
+            send_data = self._serialize(encoded_data)
+            self.socket.sendall(send_data)
 
-            self.socket.sendall(send_data if isinstance(send_data, bytes) else str(send_data).encode())  # type: ignore
+            # 接收响应并反序列化、解码
+            response_data = self.socket.recv(4096)
+            deserialized_data = self._deserialize(response_data)
+            response = self._decode(deserialized_data)
 
-            response_data: bytes = self.socket.recv(4096)
-            response: Dict[str, Any]
-
-            if self.enable_serialization:
-                response = self._deserialize(response_data)
-            else:
-                response = eval(response_data.decode())  # 仅用于本地非序列化模式
-
-            if response.get('status') == 'success':
-                return True
-            else:
-                print(f"上传本地模型失败: {response.get('message', '未知错误')}")
-                return False
+            return response.get('status') == 'success'
 
         except Exception as e:
-            print(f"上传本地模型错误: {e}")
+            print(f"上传模型错误: {e}")
             self.disconnect()
             return False
 
-    def run_federated_round(self, round_num: int) -> bool:
-        """执行一轮联邦学习"""
-        print(f"客户端 {self.client_id} 开始第 {round_num} 轮联邦学习")
-
-        # 获取全局模型
-        global_model = self.get_global_model() if not self.local else None
-
-        # 本地训练
-        local_results = self.train(global_model)
-
-        # 上传本地模型
-        success = self.upload_local_model(local_results) if not self.local else True
-
-        return success
-
-    # 序列化和编码工具方法
-    def _serialize(self, data: Any) -> bytes:
-        """序列化数据（将Python对象转换为可传输的字节流）"""
-        if not self.enable_serialization:
-            return str(data).encode() if not isinstance(data, bytes) else data
-        return pickle.dumps(data)
-
-    def _deserialize(self, data: bytes) -> Any:
-        """反序列化数据（将字节流转换回Python对象）"""
-        if not self.enable_serialization:
-            return data.decode()
-        return pickle.loads(data)
-
-    def _encode(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
+    # 编码解码函数 - 预设为空实现，便于派生扩展
+    def _encode(self, data: Any) -> Any:
         """
-        编码数据（扩展接口）
-
-        用于在序列化前对数据进行处理，如添加差分隐私噪声、数据压缩或加密等。
-        子类可重写此方法实现特定的编码逻辑。
+        数据编码处理（扩展接口）
+        可在派生类中重写，用于数据加密、压缩或添加噪声等
         """
-        if not self.enable_serialization:
-            return data
+        return data  # 空实现，直接返回原始数据
+
+    def _decode(self, data: Any) -> Any:
+        """
+        数据解码处理（扩展接口）
+        可在派生类中重写，用于数据解密、解压或去除噪声等
+        """
+        return data  # 空实现，直接返回原始数据
+
+    # 序列化工具方法
+    def _serialize(self, data: Any) -> Union[bytes, Any]:
+        """序列化数据"""
+        if self.enable_serialization:
+            return pickle.dumps(data)
+        # 未启用序列化时直接返回数据本身
         return data
 
-    def _decode(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
-        """
-        解码数据（扩展接口）
-
-        用于在反序列化后对数据进行处理，如解密、去噪或数据恢复等。
-        子类可重写此方法实现特定的解码逻辑。
-        """
-        if not self.enable_serialization:
-            return data
+    def _deserialize(self, data: Any) -> Any:
+        """反序列化数据"""
+        if self.enable_serialization:
+            return pickle.loads(data) if isinstance(data, bytes) else data
+        # 未启用序列化时直接返回数据本身
         return data
