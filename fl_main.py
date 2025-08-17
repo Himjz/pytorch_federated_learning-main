@@ -86,8 +86,8 @@ def fed_run():
 
     dataloader.load()
 
-    trainset_config, testset= dataloader.divide()
-    info = (dataloader.num_classes,dataloader.image_size,dataloader.in_channels)
+    trainset_config, testset = dataloader.divide()
+    info = (dataloader.num_classes, dataloader.image_size, dataloader.in_channels)
     max_acc = 0
 
     # 初始化客户端

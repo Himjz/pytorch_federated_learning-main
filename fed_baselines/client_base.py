@@ -5,7 +5,6 @@ from typing import Dict, List, Any, Optional, Union
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
-
 from utils.fed_utils import init_model
 from utils.models import *
 

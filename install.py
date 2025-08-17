@@ -1,9 +1,9 @@
+import logging
+import os
 import platform
 import re
 import subprocess
 import sys
-import os
-import logging
 from pathlib import Path
 from typing import Tuple, List, Optional
 

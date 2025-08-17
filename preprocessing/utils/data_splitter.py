@@ -12,12 +12,12 @@ from .dataset_loader import DatasetLoader
 
 class DataSplitter(DatasetLoader):
     """数据集划分器，负责将数据集划分给多个客户端"""
-    
+
     def __init__(self, **kwargs):
-        super().__init__(** kwargs)
+        super().__init__(**kwargs)
         self.clients = {}  # 存储客户端
         self.is_divided = False  # 标记是否已划分
-    
+
     def divide(self, create: bool = False) -> Union[Tuple[Dict, Any], 'DataSplitter']:
         """
         将数据集划分给多个客户端
@@ -106,7 +106,7 @@ class DataSplitter(DatasetLoader):
                 'user_data': self.clients,
                 'num_samples': sum(len(client) for client in self.clients.values())
             }, self.testset
-    
+
     def _group_indices_by_class(self) -> Dict[int, List[int]]:
         """按类别分组样本索引"""
         if self.selected_classes is None:
@@ -126,7 +126,7 @@ class DataSplitter(DatasetLoader):
             print(f"标签 {cls}: {len(indices)} 个样本")
 
         return class_indices
-    
+
     def _assign_classes_to_clients(self) -> Dict[str, List[int]]:
         """为每个客户端分配类别"""
         client_classes = {}
@@ -136,7 +136,7 @@ class DataSplitter(DatasetLoader):
             client_class_indices = [(i * self.k + j) % len(unique_labels) for j in range(self.num_local_class)]
             client_classes[f'f_{i:05d}'] = [unique_labels[idx] for idx in client_class_indices]
         return client_classes
-    
+
     def _count_class_assignments(self, client_classes: Dict[str, List[int]]) -> Dict[int, int]:
         """统计每个类别被分配给多少个客户端"""
         class_assign_counts = defaultdict(int)
@@ -144,7 +144,7 @@ class DataSplitter(DatasetLoader):
             for cls in classes:
                 class_assign_counts[cls] += 1
         return class_assign_counts
-    
+
     def _create_clients(self, client_classes: Dict[str, List[int]], class_indices: Dict[int, List[int]],
                         class_assign_counts: Dict[int, int]) -> None:
         """创建客户端并分配数据"""
@@ -200,7 +200,7 @@ class DataSplitter(DatasetLoader):
                     strategy_ratio=ratio,
                     device=self.device
                 )
-    
+
     def _fallback_client_creation(self, class_indices: Dict[int, List[int]]) -> None:
         """备用客户端创建策略"""
         all_indices = []
@@ -241,7 +241,7 @@ class DataSplitter(DatasetLoader):
                 strategy_ratio=ratio,
                 device=self.device
             )
-    
+
     def _print_report(self) -> None:
         """打印数据集划分报告"""
         print(f"\n===== 联邦数据集报告（设备: {self.device}） =====")

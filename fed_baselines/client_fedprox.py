@@ -1,5 +1,6 @@
 ## 客户端数据的分布差异较大时，FedProx 通过近端项对本地模型更新进行约束，可以避免客户端模型偏离全局模型太远，从而提高模型在全局数据上的收敛速度和泛化能力。
 import copy
+from typing import Optional
 
 from torch.utils.data import DataLoader
 
@@ -8,15 +9,12 @@ from utils.models import *
 
 
 class FedProxClient(FedClient):
-    def __init__(self, name, epoch, model_name, dataset_info: list|tuple,
-                 target_ip: str = '127.0.0.3', port: int = 9999,
-                 local_ip: str = None, local_port: int = None,
-                 return_packed: bool = False, local: bool = True
-                 ):
-        super().__init__(name, epoch, model_name, dataset_info,
-                         target_ip, port,
-                         local_ip, local_port,
-                         return_packed, local)
+    def __init__(self, name, epoch, model_name, dataset_info: list | tuple,
+                 local: bool = True, server_ip: str = '127.0.0.3', server_port: int = 9999,
+                 enable_serialization: Optional[bool] = None):
+        super().__init__(name, epoch, model_name, dataset_info,local,
+                         server_ip, server_port,
+                         enable_serialization)
         self.mu = 0.1
 
     def train(self):

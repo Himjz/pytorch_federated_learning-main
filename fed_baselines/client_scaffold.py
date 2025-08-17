@@ -1,4 +1,5 @@
 import copy
+from typing import Optional
 
 from torch.utils.data import DataLoader
 
@@ -8,15 +9,12 @@ from utils.models import *
 
 
 class ScaffoldClient(FedClient):
-    def __init__(self, name, epoch, model_name, dataset_info: list|tuple,
-                 target_ip: str = '127.0.0.3', port: int = 9999,
-                 local_ip: str = None, local_port: int = None,
-                 return_packed: bool = False, local: bool = True
-                 ):
-        super().__init__(name, epoch, model_name, dataset_info,
-                         target_ip, port,
-                         local_ip, local_port,
-                         return_packed, local)
+    def __init__(self, name, epoch, model_name, dataset_info: list | tuple,
+                 local: bool = True, server_ip: str = '127.0.0.3', server_port: int = 9999,
+                 enable_serialization: Optional[bool] = None):
+        super().__init__(name, epoch, model_name, dataset_info,local,
+                         server_ip, server_port,
+                         enable_serialization)
         # 服务器控制变量
         self.scv = init_model(model_name=self.model_name, num_class=self._num_class, image_channel=self._image_channel)
         # 客户端控制变量

@@ -2,13 +2,15 @@
 
 ## 概述
 
-联邦学习数据加载器（UniversalDataLoader v5.0.1）是一个高度可定制的工具，用于为联邦学习场景准备和分配数据集。该加载器支持多种标准数据集和自定义数据集，能够模拟不同的客户端数据分布，并支持各种客户端行为策略（包括恶意行为）。
+联邦学习数据加载器（UniversalDataLoader
+v5.0.1）是一个高度可定制的工具，用于为联邦学习场景准备和分配数据集。该加载器支持多种标准数据集和自定义数据集，能够模拟不同的客户端数据分布，并支持各种客户端行为策略（包括恶意行为）。
 
 ## 核心接口
 
 ### 主要类：`UniversalDataLoader`
 
 该类是数据加载器的核心接口，继承自以下组件：
+
 - `BaseDataLoader`：提供基础属性和通用方法
 - `TransformMixin`：提供数据增强和转换功能
 - `DatasetLoader`：处理数据集加载逻辑
@@ -16,27 +18,28 @@
 
 ### 初始化参数
 
-| 参数名 | 类型 | 描述 | 默认值 |
-|--------|------|------|--------|
-| `root` | str | 数据集存储根目录 | './data' |
-| `dataset_name` | str | 数据集名称（支持'MNIST'、'CIFAR10'等或自定义路径） | 'MNIST' |
-| `num_client` | int | 客户端数量 | 1 |
-| `num_local_class` | int | 每个客户端拥有的类别数量 | 10 |
-| `untrusted_strategies` | List[float] | 客户端策略列表，决定客户端行为 | None |
-| `k` | int | 类别分配参数 | 1 |
-| `print_report` | bool | 是否打印数据集报告 | True |
-| `device` | torch.device | 计算设备 | 自动检测（GPU优先） |
-| `preload_to_gpu` | bool | 是否将数据预加载到GPU | False |
-| `seed` | int | 随机种子，保证结果可复现 | 0 |
-| `download` | bool | 是否下载数据集 | True |
-| `cut` | float | 样本裁剪比例（0-1之间） | None |
-| `subset` | Tuple[str, Union[int, float]] | 类别筛选参数 | None |
-| `size` | Union[int, Tuple[int, int]] | 图像尺寸 | None |
-| `in_channels` | int | 输入图像通道数 | None |
-| `augmentation` | bool | 是否启用数据增强 | False |
-| `augmentation_params` | Dict[str, Any] | 数据增强参数 | 见下文默认值 |
+| 参数名                    | 类型                            | 描述                                | 默认值         |
+|------------------------|-------------------------------|-----------------------------------|-------------|
+| `root`                 | str                           | 数据集存储根目录                          | './data'    |
+| `dataset_name`         | str                           | 数据集名称（支持'MNIST'、'CIFAR10'等或自定义路径） | 'MNIST'     |
+| `num_client`           | int                           | 客户端数量                             | 1           |
+| `num_local_class`      | int                           | 每个客户端拥有的类别数量                      | 10          |
+| `untrusted_strategies` | List[float]                   | 客户端策略列表，决定客户端行为                   | None        |
+| `k`                    | int                           | 类别分配参数                            | 1           |
+| `print_report`         | bool                          | 是否打印数据集报告                         | True        |
+| `device`               | torch.device                  | 计算设备                              | 自动检测（GPU优先） |
+| `preload_to_gpu`       | bool                          | 是否将数据预加载到GPU                      | False       |
+| `seed`                 | int                           | 随机种子，保证结果可复现                      | 0           |
+| `download`             | bool                          | 是否下载数据集                           | True        |
+| `cut`                  | float                         | 样本裁剪比例（0-1之间）                     | None        |
+| `subset`               | Tuple[str, Union[int, float]] | 类别筛选参数                            | None        |
+| `size`                 | Union[int, Tuple[int, int]]   | 图像尺寸                              | None        |
+| `in_channels`          | int                           | 输入图像通道数                           | None        |
+| `augmentation`         | bool                          | 是否启用数据增强                          | False       |
+| `augmentation_params`  | Dict[str, Any]                | 数据增强参数                            | 见下文默认值      |
 
 **默认增强参数**：
+
 ```python
 {
     'rotation': 15,        # 旋转角度
@@ -48,12 +51,12 @@
 
 ### 主要方法
 
-| 方法名 | 描述 | 返回值 |
-|--------|------|--------|
-| `load()` | 加载并预处理数据集 | 自身实例 |
-| `divide(create=False)` | 将数据集划分给客户端 | 若create=True返回自身，否则返回(trainset_config, testset) |
-| `calculate_statistics(sample_size=1000)` | 计算数据集的均值和标准差 | (mean, std) |
-| `get_test_loader(batch_size=32, shuffle=False)` | 获取测试集数据加载器 | DataLoader |
+| 方法名                                             | 描述           | 返回值                                             |
+|-------------------------------------------------|--------------|-------------------------------------------------|
+| `load()`                                        | 加载并预处理数据集    | 自身实例                                            |
+| `divide(create=False)`                          | 将数据集划分给客户端   | 若create=True返回自身，否则返回(trainset_config, testset) |
+| `calculate_statistics(sample_size=1000)`        | 计算数据集的均值和标准差 | (mean, std)                                     |
+| `get_test_loader(batch_size=32, shuffle=False)` | 获取测试集数据加载器   | DataLoader                                      |
 
 ## 使用示例
 
@@ -200,29 +203,37 @@ class CustomDataSplitter(DataSplitter):
 ## 版本历史
 
 v5.0.1:
+
 - 优化了部分BUG
 
 v5.0.0:
+
 - 采用模块化设计，拆分代码为多个文件
 - 实现链式继承结构，提高代码复用性
 - 统一接口设计，保持与原有测试代码兼容
 - 增强了自定义数据集的支持
 
 v4.2.0:
+
 - 新增划分子数据集功能
 
 v4.1.0:
+
 - 新增了数据增强功能
 - 修复了数据加载时的一些问题
 
 v4.0.0:
+
 - 将加载器对象化，修改了接口
 
 v3.0.0:
-- 将两个数据加载器合并 
+
+- 将两个数据加载器合并
 
 v2.0.0:
+
 - 为自定义数据加载器添加不可信客户端构建功能
 
 v1.0.0:
+
 - 新增自定义数据加载器，加载自定义数据

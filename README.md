@@ -13,11 +13,11 @@ If you find this repository useful, please let me know with your stars:star:. Th
   supported baselines are FedAvg, FedNova, FedProx and SCAFFOLD:
     + [FedAvg](https://arxiv.org/abs/1602.05629) (Hugh Brendan McMahan et al., AISTATS 2017)
     + [FedNova](https://arxiv.org/abs/2007.07481) (Jianyu Wang et al., NeurIPS
-      2020) [:octocat:](https://github.com/JYWa/FedNova)
+        2020) [:octocat:](https://github.com/JYWa/FedNova)
     + [FedProx](https://arxiv.org/abs/1812.06127) (Tian Li et al., MLSys
-      2020) [:octocat:](https://github.com/litian96/FedProx)
+        2020) [:octocat:](https://github.com/litian96/FedProx)
     + [SCAFFOLD](https://arxiv.org/abs/1910.06378) (Sai Praneeth Karimireddy et al.,ICML
-      2020) [:octocat:](https://github.com/ki-ljl/Scaffold-Federated-Learning)
+        2020) [:octocat:](https://github.com/ki-ljl/Scaffold-Federated-Learning)
 
 * **Dataset preprocessing**: Downloading the benchmark datasets automatically and dividing them into a number of clients
   w.r.t. federated settings. The currently supported datasets are MNIST, Fashion-MNIST, SVHN, CIFAR-10, CIFAR-100. Other
