@@ -2,64 +2,58 @@ import os
 import shutil
 import sys
 from datetime import datetime
-from typing import List, Any
+from typing import Dict
 
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
 from tqdm import tqdm
 
+from .base_loader import BaseDataLoader
 from .client import Client
-from .data_splitter import DataSplitter
 
 
-class ExportingDataSplitter(DataSplitter):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._info_printed = False
-        self.idx_to_class = None
+class ClientsController:
+    def __init__(self, class_to_idx, test_set, export,full_train_set,dataset_name,root,in_channels,base_images):
+        self.root = root
+        self.dataset_name = dataset_name
+        self._export = export
+        self.idx_to_class = {v: k for k, v in class_to_idx.items()}
+        self.test_set = test_set
+        self.valid_val_labels = []
+        self.clients = {}
+        self.full_train_set = full_train_set
+        self.in_channels = in_channels
+        self.base_images = base_images
 
-    def divide(self, create: bool = False) -> Any:
-        result = super().divide(create)
-        self.idx_to_class = {v: k for k, v in self.class_to_idx.items()}
-
-        if self.export and self.is_divided:
-            if not hasattr(self, 'processed_testset') or not hasattr(self.processed_testset, 'indices'):
-                raise AttributeError("处理测试集(processed_testset)或其indices属性未定义")
-
-            for client_id, client in self.clients.items():
-                if not hasattr(client, 'train_indices'):
-                    raise AttributeError(f"客户端 {client_id} 缺少train_indices属性")
-
-            self._clean_processed_testset_indices()
+    def export(self) -> None:
+        if self._export:
+            self._clean_processed_test_set_indices()
             self._generate_valid_labels()
             self._export_clients_data()
 
-        return result
-
-    def _clean_processed_testset_indices(self):
-        testset_size = len(self.processed_testset.dataset) if hasattr(self.processed_testset, 'dataset') else len(
-            self.processed_testset)
-        original_indices = self.processed_testset.indices
-        valid_indices = [idx for idx in original_indices if 0 <= idx < testset_size]
+    def _clean_processed_test_set_indices(self):
+        test_set__size = len(self.test_set.dataset) if hasattr(self.test_set, 'dataset') else len(
+            self.test_set)
+        original_indices = self.test_set.indices
+        valid_indices = [idx for idx in original_indices if 0 <= idx < test_set__size]
 
         invalid_count = len(original_indices) - len(valid_indices)
         if invalid_count > 0:
             print(f"警告: 过滤掉 {invalid_count} 个无效的测试集索引")
-            self.processed_testset.indices = valid_indices
+            self.test_set.indices = valid_indices
 
     def _generate_valid_labels(self):
-        self.valid_val_labels = []
-        for idx in self.processed_testset.indices:
-            _, label = self.processed_testset.dataset[idx]
-            self.valid_val_labels.append(self.to_numpy_label(label))
+        for idx in self.test_set.indices:
+            _, label = self.test_set.dataset[idx]
+            self.valid_val_labels.append(BaseDataLoader.to_numpy_label(label))
 
         self.client_valid_labels = {}
         for client_id, client in self.clients.items():
             labels = []
             for idx in client.train_indices:
-                _, label = self.original_trainset[idx]
-                labels.append(self.to_numpy_label(label))
+                _, label = self.full_train_set[idx]
+                labels.append(BaseDataLoader.to_numpy_label(label))
             self.client_valid_labels[client_id] = labels
 
     def _export_clients_data(self):
@@ -77,13 +71,12 @@ class ExportingDataSplitter(DataSplitter):
         total_clients = len(sorted_client_ids)
 
         total_train_samples = sum(len(client.train_indices) for client in self.clients.values())
-        val_count = len(self.processed_testset.indices)
+        val_count = len(self.test_set.indices)
 
-        if not self._info_printed:
-            print(f"导出 {total_clients} 个客户端数据至: {export_base}")
-            print(f"总训练样本: {total_train_samples}, 全局验证样本: {val_count}")
-            self._info_printed = True
-            sys.stdout.flush()
+        print(f"导出 {total_clients} 个客户端数据至: {export_base}")
+        print(f"总训练样本: {total_train_samples}, 全局验证样本: {val_count}")
+        self._info_printed = True
+        sys.stdout.flush()
 
         print("开始导出全局验证集...")
         with tqdm(total=val_count, desc="导出全局验证集", unit="样本",
@@ -111,7 +104,7 @@ class ExportingDataSplitter(DataSplitter):
                 total_clients
             )
         self._generate_export_documents(export_base, total_clients, total_train_samples,
-                                        val_count, sorted_client_ids)
+                                        val_count)
 
     def _export_global_validation_set(self, val_dir: str, pbar: tqdm) -> None:
         class_indices = set(self.valid_val_labels)
@@ -119,10 +112,10 @@ class ExportingDataSplitter(DataSplitter):
             cls_name = self._get_class_name(cls_idx)
             os.makedirs(os.path.join(val_dir, cls_name), exist_ok=True)
 
-        for sample_idx, data_idx in enumerate(self.processed_testset.indices):
+        for sample_idx, data_idx in enumerate(self.test_set.indices):
             try:
-                img_tensor, label = self.processed_testset.dataset[data_idx]
-                class_idx = self.to_numpy_label(label)
+                img_tensor, label = self.test_set.dataset[data_idx]
+                class_idx = BaseDataLoader.to_numpy_label(label)
             except IndexError as e:
                 print(f"\n错误: 索引 {data_idx} 访问失败 - {str(e)}")
                 continue
@@ -148,11 +141,11 @@ class ExportingDataSplitter(DataSplitter):
         for sample_idx, data_idx in enumerate(train_indices):
             if self.base_images is not None:
                 img_tensor = self.base_images[data_idx]
-                _, label = self.original_trainset[data_idx]
+                _, label = self.full_train_set[data_idx]
             else:
-                img_tensor, label = self.original_trainset[data_idx]
+                img_tensor, label = self.full_train_set[data_idx]
 
-            class_idx = self.to_numpy_label(label)
+            class_idx = BaseDataLoader.to_numpy_label(label)
 
             class_name = self._get_class_name(class_idx)
             save_path = os.path.join(client_dir, class_name, f"{client_name}_train_{sample_idx}.png")
@@ -216,7 +209,7 @@ class ExportingDataSplitter(DataSplitter):
         return transforms.ToPILImage()(torch.clamp(tensor, 0.0, 1.0))
 
     def _generate_export_documents(self, export_base: str, total_clients: int, total_train: int,
-                                   total_val: int, client_ids: List[str]) -> None:
+                                   total_val: int) -> None:
         with open(os.path.join(export_base, "README.md"), "w", encoding="utf-8") as f:
             f.write(f"# {self.dataset_name} 联邦学习数据集\n\n")
             f.write("## 目录结构\n")
@@ -227,3 +220,9 @@ class ExportingDataSplitter(DataSplitter):
             f.write(f"- 总训练样本: {total_train}\n")
             f.write(f"- 验证样本: {total_val}\n")
             f.write(f"- 导出时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+    def append_client(self, client: Client) -> None:
+        self.clients[client.client_id] = client
+
+    def get_clients(self) -> Dict[str, Client]:
+        return self.clients

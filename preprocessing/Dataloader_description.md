@@ -203,6 +203,11 @@ class CustomDataSplitter(DataSplitter):
 
 ## 版本历史
 
+v5.2.2:
+
+- 新增了客户端控制器功能
+- 移除了原来的导出器
+
 v5.2.1:
 
 - 修复数据集导出功能的一些BUG

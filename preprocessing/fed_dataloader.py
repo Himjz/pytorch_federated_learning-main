@@ -2,10 +2,10 @@ from typing import List, Dict, Tuple, Optional, Union, Any
 
 import torch
 
-from preprocessing.utils import ExportingDataSplitter
+from preprocessing.utils import DataSplitter
 
 
-class UniversalDataLoader(ExportingDataSplitter):
+class UniversalDataLoader(DataSplitter):
     """
     通用联邦学习数据加载器，继承自DataSplitter，
     提供完整的数据加载、处理和联邦划分功能

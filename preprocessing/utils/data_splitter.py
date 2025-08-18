@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 from .client import Client
 from .dataset_loader import DatasetLoader
+from .clients_controller import ClientsController
 
 
 class DataSplitter(DatasetLoader):
@@ -15,11 +16,11 @@ class DataSplitter(DatasetLoader):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.clients = {}  # 存储客户端
-        self.is_divided = False  # 标记是否已划分
-        # 新增分布类型和参数属性（从父类继承）
-        # self.distribution_type: str = "default" 或 "dirichlet"
-        # self.distribution_param: 对于default是原来的k值，对于dirichlet是浓度参数alpha
+        self.export = kwargs.get('export', False)
+        self.clients = ClientsController(self.class_to_idx, self.processed_testset,
+                                         self.export, self.original_trainset, self.root,
+                                         self.dataset_name, self.in_channels, self.base_images)
+        self.is_divided = False
 
     def divide(self, create: bool = False) -> Union[Tuple[Dict, Any], 'DataSplitter']:
         """
@@ -52,9 +53,9 @@ class DataSplitter(DatasetLoader):
                 return self
             else:
                 trainset_config = {
-                    'users': list(self.clients.keys()),
+                    'users': list(self.clients.get_clients().keys()),
                     'user_data': self.clients,
-                    'num_samples': sum(len(client) for client in self.clients.values())
+                    'num_samples': sum(len(client) for client in self.clients.get_clients().values())
                 }
                 return trainset_config, self.testset
 
@@ -65,7 +66,7 @@ class DataSplitter(DatasetLoader):
             print("尝试使用标签值作为类别重新分组...")
             alternative_class_indices = defaultdict(list)
             for idx in range(len(self.base_labels)):
-                lbl = self._to_numpy_label(self.base_labels[idx])
+                lbl = self.to_numpy_label(self.base_labels[idx])
                 alternative_class_indices[lbl].append(idx)
 
             valid_classes = [cls for cls, indices in alternative_class_indices.items() if len(indices) > 0]
@@ -97,18 +98,19 @@ class DataSplitter(DatasetLoader):
 
         self.is_divided = True
 
+
         if self.print_report:
             self._print_report()
 
-        print(f"数据集 {self.dataset_name} 已划分为 {len(self.clients)} 个客户端 (请求的数量: {self.num_client})")
-
+        print(f"数据集 {self.dataset_name} 已划分为 {len(self.clients.get_clients())} 个客户端 (请求的数量: {self.num_client})")
+        self.clients.export()
         if create:
             return self
         else:
             return {
-                'users': list(self.clients.keys()),
-                'user_data': self.clients,
-                'num_samples': sum(len(client) for client in self.clients.values())
+                'users': list(self.clients.get_clients().keys()),
+                'user_data': self.clients.get_clients(),
+                'num_samples': sum(len(client) for client in self.clients.get_clients().values())
             }, self.testset
 
     def _group_indices_by_class(self) -> Dict[int, List[int]]:
@@ -119,7 +121,7 @@ class DataSplitter(DatasetLoader):
 
         class_indices = defaultdict(list)
         for idx in tqdm(self.indices, desc="按类别分组", unit="样本"):
-            cls = self._to_numpy_label(self.base_labels[idx])
+            cls = self.to_numpy_label(self.base_labels[idx])
             class_indices[cls].append(idx)
 
         for indices in class_indices.values():
@@ -180,7 +182,6 @@ class DataSplitter(DatasetLoader):
     def _create_clients(self, client_classes: Dict[str, List[int]], class_indices: Dict[int, List[int]],
                         class_assign_counts: Dict[int, int]) -> None:
         """创建客户端并分配数据"""
-        self.clients = {}
         remaining_indices = {cls: indices.copy() for cls, indices in class_indices.items()}
 
         for client_id, classes in tqdm(client_classes.items(), desc="创建客户端", unit="客户端"):
@@ -223,7 +224,7 @@ class DataSplitter(DatasetLoader):
                         break
 
             if len(client_indices) > 0:
-                self.clients[client_id] = Client(
+                self.clients.append_client(Client(
                     client_id=client_id,
                     dataset=self,
                     indices=client_indices,
@@ -231,7 +232,7 @@ class DataSplitter(DatasetLoader):
                     strategy=strategy,
                     strategy_ratio=ratio,
                     device=self.device
-                )
+                ))
 
     def _fallback_client_creation(self, class_indices: Dict[int, List[int]]) -> None:
         """备用客户端创建策略"""
@@ -256,7 +257,7 @@ class DataSplitter(DatasetLoader):
 
             client_labels = set()
             for idx in client_indices:
-                cls = self._to_numpy_label(self.base_labels[idx])
+                cls = self.to_numpy_label(self.base_labels[idx])
                 client_labels.add(cls)
 
             strategy = 'normal'
@@ -264,7 +265,7 @@ class DataSplitter(DatasetLoader):
             if self.untrusted_strategies and i < len(self.untrusted_strategies):
                 strategy, ratio = self.parse_strategy(self.untrusted_strategies[i])
 
-            self.clients[f'f_{i:05d}'] = Client(
+            self.clients.append_client(Client(
                 client_id=f'f_{i:05d}',
                 dataset=self,
                 indices=client_indices,
@@ -272,12 +273,12 @@ class DataSplitter(DatasetLoader):
                 strategy=strategy,
                 strategy_ratio=ratio,
                 device=self.device
-            )
+            ))
 
     def _print_report(self) -> None:
         """打印详细的数据集划分报告"""
         # 收集所有客户端的样本数量
-        client_sample_counts = [len(client) for client in self.clients.values()]
+        client_sample_counts = [len(client) for client in self.clients.get_clients().values()]
         total_samples = sum(client_sample_counts)
         avg_samples = np.mean(client_sample_counts)
         std_samples = np.std(client_sample_counts)
@@ -288,11 +289,11 @@ class DataSplitter(DatasetLoader):
         class_distribution = defaultdict(int)
         client_class_coverage = []
 
-        for client in self.clients.values():
+        for client in self.clients.get_clients().values():
             # 统计每个客户端的类别分布
             client_classes = defaultdict(int)
             for idx in client.train_indices:
-                cls = self._to_numpy_label(self.base_labels[idx])
+                cls = self.to_numpy_label(self.base_labels[idx])
                 class_distribution[cls] += 1
                 client_classes[cls] += 1
 
@@ -313,7 +314,7 @@ class DataSplitter(DatasetLoader):
         print(f"  图像尺寸:           {self.image_size}, 通道数: {self.in_channels}")
         print(f"  分布类型:           {self.distribution_type}")
         print(f"  分布参数:           {self.distribution_param}")
-        print(f"  客户端数量:         {len(self.clients)} (请求数量: {self.num_client})")
+        print(f"  客户端数量:         {len(self.clients.get_clients())} (请求数量: {self.num_client})")
         print(f"  总样本数:           {total_samples}")
         print(f"  测试集样本数:       {len(self.testset) if self.testset else 0}")
 
@@ -338,16 +339,16 @@ class DataSplitter(DatasetLoader):
 
         # 客户端策略分布部分
         strategy_counts = defaultdict(int)
-        for client in self.clients.values():
+        for client in self.clients.get_clients().values():
             strategy_counts[client.strategy] += 1
 
         print("\n[客户端策略分布]")
         for strategy, count in strategy_counts.items():
-            percentage = (count / len(self.clients)) * 100
+            percentage = (count / len(self.clients.get_clients())) * 100
             print(f"  {strategy}: {count} 个客户端 ({percentage:.2f}%)")
 
         # 恶意客户端报告部分
-        malicious_clients = [c for c in self.clients.values() if c.strategy == 'malicious']
+        malicious_clients = [c for c in self.clients.get_clients().values() if c.strategy == 'malicious']
         if malicious_clients:
             print("\n[恶意客户端标签准确率]")
             total_accuracy = 0.0
@@ -374,3 +375,10 @@ class DataSplitter(DatasetLoader):
         print("\n" + "=" * 60)
         print("                报告结束                ")
         print("=" * 60 + "\n")
+
+    def load(self) -> 'DatasetLoader':
+        res = super().load()
+        self.clients = ClientsController(self.class_to_idx, self.processed_testset,
+                                         self.export, self.original_trainset, self.root,
+                                         self.dataset_name, self.in_channels, self.base_images)
+        return res

@@ -41,7 +41,6 @@ class BaseDataLoader:
         self.base_labels = None
         self.indices = None
         self.custom_labels = {}
-        self.clients = {}
         self.testset = None
         self.num_classes = 0
         self.original_trainset = None
@@ -121,7 +120,7 @@ class BaseDataLoader:
             return 'normal', 1.0
 
     @staticmethod
-    def _to_numpy_label(label: Union[torch.Tensor, int]) -> int:
+    def to_numpy_label(label: Union[torch.Tensor, int]) -> int:
         """将标签转换为numpy格式"""
         if torch.is_tensor(label):
             return label.item()
