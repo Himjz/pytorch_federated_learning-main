@@ -291,7 +291,7 @@ class DataSplitter(DatasetLoader):
         for client in self.clients.values():
             # 统计每个客户端的类别分布
             client_classes = defaultdict(int)
-            for idx in client.indices:
+            for idx in client.train_indices:
                 cls = self._to_numpy_label(self.base_labels[idx])
                 class_distribution[cls] += 1
                 client_classes[cls] += 1

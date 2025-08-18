@@ -13,7 +13,7 @@ class Client(Dataset):
                  device: Optional[torch.device] = None):
         self.client_id = client_id
         self.dataset = dataset
-        self.indices = indices
+        self.train_indices = indices
         self.assigned_classes = assigned_classes
         self.strategy = strategy
         self.strategy_ratio = strategy_ratio
@@ -42,7 +42,7 @@ class Client(Dataset):
                     indices = torch.randperm(len(self))[:num_corrupt].tolist()
 
                     for idx in indices:
-                        data_idx = self.indices[idx]
+                        data_idx = self.train_indices[idx]
                         true_label = self.dataset._to_numpy_label(self.dataset.base_labels[data_idx])
 
                         if true_label in self.assigned_classes:
@@ -64,11 +64,11 @@ class Client(Dataset):
 
     def calculate_label_accuracy(self) -> float:
         """计算标签准确率（用于评估恶意客户端的标签污染程度）"""
-        orig_labels = self.dataset.base_labels[self.indices].detach().clone().to(self.device, non_blocking=True)
+        orig_labels = self.dataset.base_labels[self.train_indices].detach().clone().to(self.device, non_blocking=True)
 
         adj_labels = []
         for idx in range(len(self)):
-            adj_labels.append(self.custom_labels.get(idx, self.dataset.base_labels[self.indices[idx]]))
+            adj_labels.append(self.custom_labels.get(idx, self.dataset.base_labels[self.train_indices[idx]]))
         adj_labels = torch.tensor(adj_labels, device=self.device, dtype=torch.int64)
 
         return (orig_labels == adj_labels).sum().item() / len(orig_labels) if len(orig_labels) > 0 else 0.0
@@ -77,7 +77,7 @@ class Client(Dataset):
         """打印客户端数据分布信息"""
         labels = []
         for idx in range(len(self)):
-            label = self.custom_labels.get(idx, self.dataset.base_labels[self.indices[idx]])
+            label = self.custom_labels.get(idx, self.dataset.base_labels[self.train_indices[idx]])
             if torch.is_tensor(label):
                 labels.append(int(label.item()))
             else:
@@ -116,7 +116,7 @@ class Client(Dataset):
         print(f"  图像形状: {batch_imgs.shape}")
         print(f"  返回标签: {batch_labels.tolist()}")
 
-        if batch_labels.tolist() == [self.custom_labels.get(idx, self.dataset.base_labels[self.indices[idx]])
+        if batch_labels.tolist() == [self.custom_labels.get(idx, self.dataset.base_labels[self.train_indices[idx]])
                                      for idx in range(batch_size)]:
             print("  ✅ 验证通过")
         else:
@@ -124,11 +124,11 @@ class Client(Dataset):
 
     def __len__(self) -> int:
         """返回客户端样本数量"""
-        return len(self.indices)
+        return len(self.train_indices)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, Union[torch.Tensor, int]]:
         """获取客户端的单个样本"""
-        data_idx = self.indices[idx]
+        data_idx = self.train_indices[idx]
         label = self.custom_labels.get(idx, self.dataset.base_labels[data_idx])
 
         if self.dataset.base_images is None:

@@ -61,10 +61,10 @@ if __name__ == "__main__":
 
     # 示例：使用cut和subset参数
     loader = UniversalDataLoader(
-        root="..",
-        num_client=5,
-        num_local_class=2,
-        dataset_name='dt',
+        root="..\\data",
+        num_client=20,
+        num_local_class=5,
+        dataset_name='MNIST',
         seed=0,
         untrusted_strategies=[2.1, 3.5, 4.3, 0.5, 1.0],
         device=device,
@@ -72,7 +72,6 @@ if __name__ == "__main__":
         in_channels=1,
         augmentation=True,
         cut=0.8,  # 保留80%的样本
-        subset=('random', 3),
         distribution=('dirichlet', 0.3),
         export=True
     )
@@ -82,19 +81,17 @@ if __name__ == "__main__":
     mean, std = loader.calculate_statistics()
     print(f"\n数据集统计信息: 均值={mean}, 标准差={std}")
 
-    try:
-        trainset_config, testset = loader.divide()
 
-        print("\n数据集信息:")
-        print(f"  类别数: {loader.num_classes}")
-        print(f"  图像尺寸: {loader.image_size}x{loader.image_size}")
-        print(f"  图像通道数: {loader.in_channels}")
+    trainset_config, testset = loader.divide()
 
-        for i in range(3):
-            client_id = f"f_0000{i}"
-            if client_id in trainset_config['user_data']:
-                trainset_config['user_data'][client_id].verify_loader()
-            else:
-                print(f"客户端 {client_id} 不存在")
-    except Exception as e:
-        print(f"划分数据集时出错: {e}")
+    print("\n数据集信息:")
+    print(f"  类别数: {loader.num_classes}")
+    print(f"  图像尺寸: {loader.image_size}x{loader.image_size}")
+    print(f"  图像通道数: {loader.in_channels}")
+
+    for i in range(3):
+        client_id = f"f_0000{i}"
+        if client_id in trainset_config['user_data']:
+            trainset_config['user_data'][client_id].verify_loader()
+        else:
+            print(f"客户端 {client_id} 不存在")
