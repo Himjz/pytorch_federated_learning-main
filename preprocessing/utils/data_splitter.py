@@ -379,6 +379,6 @@ class DataSplitter(DatasetLoader):
     def load(self) -> 'DatasetLoader':
         res = super().load()
         self.clients = ClientsController(self.class_to_idx, self.processed_testset,
-                                         self.export, self.original_trainset, self.root,
-                                         self.dataset_name, self.in_channels, self.base_images)
+                                         self.export, self.original_trainset, self.dataset_name,
+                                         self.root, self.in_channels, self.base_images)
         return res
