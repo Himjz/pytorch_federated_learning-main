@@ -104,8 +104,7 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
 
         # 处理尺寸
         final_transform, trainset, testset = self._handle_size(
-            dataset_cls, base_transform_list, full_trainset, full_testset,
-            trainset, testset, auto_detect_size
+            dataset_cls, base_transform_list, trainset, auto_detect_size
         )
 
         # 应用裁剪
@@ -294,11 +293,10 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
 
         return trainset, testset
 
-    def _handle_size(self, dataset_cls: Any, base_transform_list: List, full_trainset: Dataset,
-                     full_testset: Dataset, trainset: Dataset, testset: Dataset, auto_detect_size: bool) -> Tuple[
+    def _handle_size(self, dataset_cls: Any, base_transform_list: List, trainset: Dataset, auto_detect_size: bool) -> Tuple[
         Any, Dataset, Dataset]:
         """处理图像尺寸，自动检测或调整为指定尺寸"""
-        final_transform = transforms.Compose(base_transform_list)
+        transforms.Compose(base_transform_list)
 
         if auto_detect_size:
             self.image_size = self._detect_image_size(trainset)
@@ -479,11 +477,11 @@ class DatasetLoader(BaseDataLoader, TransformMixin):
         test_labels = testset.targets if hasattr(testset, 'targets') else testset.labels
 
         for i, label in enumerate(train_labels):
-            if self._to_numpy_label(label) in selected_classes:
+            if self.to_numpy_label(label) in selected_classes:
                 train_indices.append(i)
 
         for i, label in enumerate(test_labels):
-            if self._to_numpy_label(label) in selected_classes:
+            if self.to_numpy_label(label) in selected_classes:
                 test_indices.append(i)
 
         return Subset(trainset, train_indices), Subset(testset, test_indices), selected_classes
