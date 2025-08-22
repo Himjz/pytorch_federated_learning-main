@@ -43,7 +43,7 @@ class Client(Dataset):
 
                     for idx in indices:
                         data_idx = self.train_indices[idx]
-                        true_label = self.dataset._to_numpy_label(self.dataset.base_labels[data_idx])
+                        true_label = self.dataset.to_numpy_label(self.dataset.base_labels[data_idx])
 
                         if true_label in self.assigned_classes:
                             possible_labels = [c for c in self.assigned_classes if c != true_label]
