@@ -1,5 +1,6 @@
 ## 在客户端计算能力和数据量差异较大的场景中表现出色，能够自适应地调整客户端的更新权重，提高训练效率。
 import copy
+from typing import Optional
 
 from torch.utils.data import DataLoader
 
@@ -8,7 +9,9 @@ from utils.models import *
 
 
 class FedNovaClient(FedClient):
-    def __init__(self, name, epoch, model_name, dataset_info: list|tuple):
+    def __init__(self, name, epoch, model_name, dataset_info: list | tuple,
+                 local: bool = True, server_ip: str = '127.0.0.3', server_port: int = 9999,
+                 enable_serialization: Optional[bool] = None):
         """
         初始化 FedNova 客户端。
 
@@ -16,7 +19,9 @@ class FedNovaClient(FedClient):
         :param epoch: 训练轮数
         :param model_name: 模型名称
         """
-        super().__init__(name, epoch, model_name, dataset_info)
+        super().__init__(name, epoch, model_name, dataset_info,local,
+                         server_ip, server_port,
+                         enable_serialization)
         self.rho = 0.9
         self._momentum = self.rho
 

@@ -1,5 +1,6 @@
 from utils.models import *
 
+
 def init_model(model_name, num_class, image_channel):
     """
     为特定的学习任务初始化模型。

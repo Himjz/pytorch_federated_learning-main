@@ -1,9 +1,21 @@
+# 首先解决Windows编码问题
+import sys
+import shutil
+import glob
+
+if sys.platform.startswith('win32'):
+    import codecs
+
+    # 注册UTF-8编码处理，避免中文解码错误
+    codecs.register(lambda name: codecs.lookup('utf-8') if name == 'cp65001' else None)
+    # 重定向标准输出为UTF-8编码
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer)
+
+import logging
+import os
 import platform
 import re
 import subprocess
-import sys
-import os
-import logging
 from pathlib import Path
 from typing import Tuple, List, Optional
 
@@ -11,6 +23,47 @@ from typing import Tuple, List, Optional
 PROGRAM_NAME = "pytorch_federated_learning"
 # 日志文件路径变量（全局存储，用于最后打印）
 LOG_FILE_PATH = None
+
+
+def clean_invalid_distributions() -> None:
+    """
+    清理site-packages中名称带有波浪号的无效分布文件夹（如~umpy）
+    这些通常是pip安装过程中残留的临时文件
+    """
+    try:
+        # 获取site-packages目录路径
+        site_packages = Path(sys.prefix) / "Lib" / "site-packages"
+
+        if not site_packages.exists():
+            logging.warning(f"未找到site-packages目录: {site_packages}")
+            return
+
+        # 查找所有名称以波浪号开头的文件夹
+        invalid_pattern = str(site_packages / "~*")
+        invalid_folders = glob.glob(invalid_pattern)
+
+        if invalid_folders:
+            print(f"\n发现{len(invalid_folders)}个无效的分布文件夹，正在清理...")
+            logging.info(f"发现无效分布文件夹: {invalid_folders}")
+
+            for folder in invalid_folders:
+                try:
+                    # 尝试删除文件夹
+                    if os.path.isdir(folder):
+                        shutil.rmtree(folder)
+                    else:
+                        os.remove(folder)
+                    print(f"已清理无效文件夹: {os.path.basename(folder)}")
+                    logging.info(f"已清理无效文件夹: {folder}")
+                except Exception as e:
+                    print(f"清理文件夹 {os.path.basename(folder)} 失败: {str(e)}")
+                    logging.warning(f"清理文件夹 {folder} 失败: {str(e)}")
+        else:
+            logging.info("未发现无效的分布文件夹")
+
+    except Exception as e:
+        print(f"清理无效分布文件夹时发生错误: {str(e)}")
+        logging.error(f"清理无效分布文件夹时发生错误: {str(e)}")
 
 
 def check_python_version() -> None:
@@ -107,7 +160,7 @@ def get_cuda_info() -> Tuple[bool, Optional[str]]:
             print(f"通过 PyTorch 检测到 CUDA 版本: {cuda_version}")
             return cuda_available, cuda_version
 
-    except ImportError|NameError:
+    except (ImportError, NameError):
         logging.info("PyTorch未安装，跳过CUDA检查")
         print("PyTorch未安装，将在后续步骤安装")
     except Exception as e:
@@ -140,29 +193,31 @@ def get_sources() -> Tuple[List[str], List[str]]:
     """
     获取分开管理的源列表
     返回: Tuple[List[str], List[str]]:
-        第一个列表是PyTorch专用源（主源+备用源）
-        第二个列表是基础包源（主源+备用源）
+        第一个列表是PyTorch专用源（官方源优先+国内源备用）
+        第二个列表是基础包源（国内源优先+官方源备用）
     """
-    # 基础包源配置（主源+备用源）
+    # 基础包源配置（国内源优先+官方源备用）
     base_packages_primary = "https://pypi.tuna.tsinghua.edu.cn/simple"
     base_packages_backup = "https://pypi.org/simple"
     base_sources = [base_packages_primary, base_packages_backup]
 
-    # PyTorch专用源配置（主源+备用源）
-    torch_primary_base = "https://mirrors.nju.edu.cn/pytorch/whl"
-    torch_backup_base = "https://download.pytorch.org/whl"
+    # PyTorch专用源配置（官方源优先+国内源备用）
+    torch_primary_base = "https://download.pytorch.org/whl"  # 官方源优先
+    torch_backup_base = "https://mirrors.nju.edu.cn/pytorch/whl"  # 国内源备用
     torch_sources = [torch_primary_base, torch_backup_base]
 
     # 记录源信息到日志（不输出到控制台）
     logging.info(f"基础包源列表: {base_sources}")
     logging.info(f"PyTorch源列表（基础）: {torch_sources}")
 
-    # 根据CUDA版本调整PyTorch源
+    # 根据CUDA版本调整PyTorch源：支持CUDA 12.9及以下版本
     cuda_available, cuda_version = get_cuda_info()
     if cuda_available and cuda_version:
         try:
             cuda_float = float(cuda_version)
+            # 版本映射，优先级从高到低
             version_mapping = [
+                (12.9, "cu129"),
                 (12.8, "cu128"),
                 (12.6, "cu126"),
                 (12.4, "cu124"),
@@ -180,7 +235,8 @@ def get_sources() -> Tuple[List[str], List[str]]:
                 configured_torch_sources = [
                     f"{source}/{cuda_folder}" for source in torch_sources
                 ]
-                logging.info(f"配置PyTorch源（CUDA {cuda_folder}）: {configured_torch_sources}")
+                logging.info(f"配置PyTorch源（CUDA {cuda_folder}，兼容{cuda_version}）: {configured_torch_sources}")
+                print(f"配置PyTorch源（CUDA {cuda_folder}，兼容当前检测到的{cuda_version}）")
                 return configured_torch_sources, base_sources
             else:
                 logging.warning(f"CUDA {cuda_version} 版本较旧，使用CPU版本PyTorch源")
@@ -262,51 +318,88 @@ def parse_package_installation(output: str, source: str) -> None:
 def run_command_with_retry(command_base: List[str], sources: List[str], description: str) -> bool:
     """
     带源重试机制的命令执行函数：当主源失败时，自动尝试其他源
-    增强日志记录，详细记录所有包的下载信息
+    增强日志记录，详细记录所有包的下载信息并实时显示进度
     参数:
         command_base: 基础命令列表（不含 -i 源参数）
         sources: 源列表（按优先级排序）
         description: 命令描述
     返回: bool: 是否成功执行
     """
+    # 添加进度显示参数
+    command_base = command_base + ["--progress-bar", "on"]
+    output = ''
     for i, source in enumerate(sources):
         try:
             # 构建完整命令（添加当前源参数）
             command = command_base + ["-i", source]
             logging.info(f"执行命令（源 {i + 1}/{len(sources)}）: {' '.join(command)}")
-            print(f"正在{description}（尝试 {i + 1}/{len(sources)}）...")
+            print(f"\n正在{description}（尝试 {i + 1}/{len(sources)}）...")
+            print(f"使用源: {source}")
 
-            result = subprocess.run(
+            # 创建进程，实时捕获并显示输出
+            process = subprocess.Popen(
                 command,
-                check=True,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1  # 行缓冲
             )
 
+            # 实时输出和记录
+            output_lines = []
+            if process.stdout:
+                for line in process.stdout:
+                    try:
+                        # 尝试直接处理行（已设置UTF-8编码）
+                        line = line.rstrip()
+                        # 打印到控制台显示进度
+                        print(line)
+                        # 保存到列表用于后续日志记录
+                        output_lines.append(line)
+                    except UnicodeDecodeError as e:
+                        # 编码错误处理
+                        logging.warning(
+                            f"解码输出时发生错误: {str(e)}, 行内容: {line.encode('utf-8', errors='replace')}")
+                        # 使用替换错误的方式处理
+                        line = line.encode('utf-8', errors='replace').decode('utf-8')
+                        print(line)
+                        output_lines.append(line)
+
+            # 等待进程完成
+            process.wait()
+
+            # 检查返回码
+            if process.returncode != 0:
+                raise subprocess.CalledProcessError(process.returncode, command)
+
+            # 合并输出内容
+            output = "\n".join(output_lines)
+
             # 解析并记录包安装信息
-            parse_package_installation(result.stdout, source)
+            parse_package_installation(output, source)
 
             logging.info(f"{description}成功（使用源: {source}）")
-            print(f"{description}成功")
+            print(f"\n{description}成功")
             return True
+
         except subprocess.CalledProcessError as e:
             # 错误输出也记录包相关信息
             logging.error(f"使用源 {source} {description}失败: 返回代码 {e.returncode}")
-            logging.error(f"错误输出内容:\n{e.stderr}")
-            parse_package_installation(e.stdout, source)  # 即使失败也记录已安装的包
-            print(f"{description}尝试 {i + 1} 失败")
+            logging.error(f"错误输出内容:\n{output if 'output' in locals() else '无输出'}")
+            if 'output' in locals():
+                parse_package_installation(output, source)  # 即使失败也记录已安装的包
+            print(f"\n{description}尝试 {i + 1} 失败")
             if i < len(sources) - 1:
-                print(f"正在尝试下一个方案...")
+                print(f"正在尝试下一个源...")
             else:
-                print(f"{description}失败")
+                print(f"\n{description}失败")
         except Exception as e:
             logging.error(f"使用源 {source} 执行命令时发生错误: {str(e)}")
-            print(f"{description}尝试 {i + 1} 发生错误")
+            print(f"\n{description}尝试 {i + 1} 发生错误: {str(e)}")
             if i < len(sources) - 1:
-                print(f"正在尝试下一个方案...")
+                print(f"正在尝试下一个源...")
             else:
-                print(f"{description}失败")
+                print(f"\n{description}失败")
 
     return False
 
@@ -315,6 +408,9 @@ def main() -> None:
     """主函数，协调环境检测和依赖安装过程"""
     # 初始化日志
     setup_logging()
+
+    # 清理无效的分布文件夹（如~umpy）
+    clean_invalid_distributions()
 
     # 检查Python版本
     check_python_version()
@@ -334,7 +430,7 @@ def main() -> None:
 
     # 安装基础依赖（使用基础包源）
     base_deps_success = run_command_with_retry(
-        [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements.txt"],
+        [sys.executable, "-m", "pip", "install", "-r", "requirements/requirements_base.txt"],
         base_sources,
         "安装基础依赖"
     )
@@ -355,6 +451,9 @@ def main() -> None:
         # 失败时也打印日志路径
         print(f"\n安装日志已保存至: {LOG_FILE_PATH}")
         sys.exit("PyTorch相关依赖安装失败，无法继续")
+
+    # 安装完成后再次清理可能产生的无效文件夹
+    clean_invalid_distributions()
 
     logging.info("所有依赖安装完成")
     print("\n所有依赖安装完成！")
