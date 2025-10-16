@@ -210,13 +210,14 @@ def get_sources() -> Tuple[List[str], List[str]]:
     logging.info(f"基础包源列表: {base_sources}")
     logging.info(f"PyTorch源列表（基础）: {torch_sources}")
 
-    # 根据CUDA版本调整PyTorch源：支持CUDA 12.9及以下版本
+    # 根据CUDA版本调整PyTorch源：支持CUDA 13.0及以下版本
     cuda_available, cuda_version = get_cuda_info()
     if cuda_available and cuda_version:
         try:
             cuda_float = float(cuda_version)
             # 版本映射，优先级从高到低
             version_mapping = [
+                (13.0, "cu130"),
                 (12.9, "cu129"),
                 (12.8, "cu128"),
                 (12.6, "cu126"),
