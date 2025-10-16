@@ -28,7 +28,7 @@ If you find this repository useful, please let me know with your stars:star:. Th
 
 ### Dependencies
 
-- Python (3.13.3)
+- Python (3.14.0)
 - PyTorch (2.7.1)
 - numpy (2.3.2)
 
