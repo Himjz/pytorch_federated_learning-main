@@ -23,7 +23,7 @@ PyTorch-Federated-Learning 提供了使用PyTorch框架实现的各种联邦学�
 
 ### 依赖项
 
-- Python (3.14.0)
+- Python (3.10+)
 - PyTorch (2.9.0)
 - numpy (2.3.4)
 
