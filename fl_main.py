@@ -56,7 +56,7 @@ def fed_run():
     algo_list = ["FedAvg", "SCAFFOLD", "FedProx", "FedNova"]
     assert config["client"]["fed_algo"] in algo_list, "The federated learning algorithm is not supported"
 
-    model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN"]
+    model_list = ["LeNet", 'AlexCifarNet', "ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "CNN", "ResNet18_n"]
     assert config["system"]["model"] in model_list, "The model is not supported"
 
     np.random.seed(config["system"]["i_seed"])

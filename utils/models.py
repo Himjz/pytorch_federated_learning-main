@@ -116,6 +116,138 @@ def generate_resnet(num_classes=10, in_channels=1, model_name="ResNet18"):
     return model
 
 
+class BasicBlock(nn.Module):
+    expansion = 1  # 残差块输出通道数是输入的1倍（区别于Bottleneck的4倍）
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        """
+        Args:
+            inplanes: 输入通道数
+            planes: 中间卷积通道数（最终输出通道数=planes×expansion）
+            stride: 卷积步长（用于降维）
+            downsample:  shortcut分支（用于通道/尺寸不匹配时调整维度）
+        """
+        super(BasicBlock, self).__init__()
+        # 第一个3×3卷积（带BN和ReLU）
+        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride,
+                               padding=1, bias=False)  # padding=1保持尺寸不变（3×3卷积）
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.relu = nn.ReLU(inplace=True)
+
+        # 第二个3×3卷积（仅带BN，ReLU在残差相加后）
+        self.conv2 = nn.Conv2d(planes, planes * self.expansion, kernel_size=3,
+                               stride=1, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes * self.expansion)
+
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        residual = x  # 残差分支（原始输入）
+
+        # 主分支：卷积→BN→ReLU→卷积→BN
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        # shortcut分支：若通道/尺寸不匹配，用1×1卷积调整
+        if self.downsample is not None:
+            residual = self.downsample(x)
+
+        # 残差相加 + 激活
+        out += residual
+        out = self.relu(out)
+
+        return out
+
+
+# 针对CIFAR-10优化的ResNet-18
+class ResNet18_n(nn.Module):
+    def __init__(self, num_classes=10):
+        super(ResNet18_n, self).__init__()
+        self.inplanes = 64  # 初始通道数（比原始ResNet-18更早进入64通道，增强特征提取）
+
+        # 主干网络起始层（适配32×32输入）
+        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1,
+                               padding=1, bias=False)  # 3×3卷积（无步长，无池化）
+        self.bn1 = nn.BatchNorm2d(self.inplanes)
+        self.relu = nn.ReLU(inplace=True)
+
+        # 四个残差阶段（每个阶段的block数：ResNet-18固定为[2,2,2,2]）
+        self.layer1 = self._make_layer(BasicBlock, 64, 2, stride=1)  # 32×32 → 32×32（通道64）
+        self.layer2 = self._make_layer(BasicBlock, 128, 2, stride=2)  # 32×32 → 16×16（通道128）
+        self.layer3 = self._make_layer(BasicBlock, 256, 2, stride=2)  # 16×16 → 8×8（通道256）
+        self.layer4 = self._make_layer(BasicBlock, 512, 2, stride=2)  # 8×8 → 4×4（通道512）
+
+        # 全局平均池化（适配任意尺寸，输出1×1特征图）
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        # Dropout（缓解CIFAR-10过拟合）
+        self.dropout = nn.Dropout(p=0.5)
+        # 全连接层（512维特征→10类）
+        self.fc = nn.Linear(512 * BasicBlock.expansion, num_classes)
+
+        # 权重初始化（提升训练稳定性）
+        self._initialize_weights()
+
+    def _make_layer(self, block, planes, blocks, stride=1):
+        """
+        构建残差阶段（由多个BasicBlock组成）
+        Args:
+            block: 残差块类型（BasicBlock）
+            planes: 中间通道数
+            blocks: 该阶段的block数量
+            stride: 第一个block的步长（用于降维）
+        """
+        downsample = None
+        # 当步长≠1 或 输入通道≠输出通道时，需要shortcut调整维度
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.inplanes, planes * block.expansion,
+                          kernel_size=1, stride=stride, bias=False),  # 1×1卷积降维/升维
+                nn.BatchNorm2d(planes * block.expansion),
+            )
+
+        layers = []
+        # 第一个block（可能带downsample和stride）
+        layers.append(block(self.inplanes, planes, stride, downsample))
+        self.inplanes = planes * block.expansion  # 更新输入通道数（后续block复用）
+        # 剩余block（步长=1，无downsample）
+        for _ in range(1, blocks):
+            layers.append(block(self.inplanes, planes))
+
+        return nn.Sequential(*layers)
+
+    def _initialize_weights(self):
+        """权重初始化：卷积层用Kaiming正态分布，BN层初始化gamma=1、beta=0"""
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        # 前向传播流程：输入→卷积→BN→ReLU→残差阶段×4→全局池化→Dropout→全连接
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.avgpool(x)  # 4×4→1×1（输出shape: [B, 512, 1, 1]）
+        x = torch.flatten(x, 1)  # 扁平化→[B, 512]
+        x = self.dropout(x)  # 随机失活（缓解过拟合）
+        x = self.fc(x)  # 输出[B, 10]（10类分数）
+
+        return x
+
+
 # 更多的 VGG 模型
 def generate_vgg(num_classes=10, in_channels=1, model_name="vgg11"):
     if model_name == "VGG11":

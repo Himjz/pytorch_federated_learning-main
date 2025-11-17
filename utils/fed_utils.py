@@ -12,6 +12,8 @@ def init_model(model_name, num_class, image_channel):
     model = None
     if model_name == "ResNet18":
         model = generate_resnet(num_classes=num_class, in_channels=image_channel, model_name=model_name)
+    elif model_name == "ResNet18_n":
+        model = ResNet18_n()
     elif model_name == "ResNet50":
         model = generate_resnet(num_classes=num_class, in_channels=image_channel, model_name=model_name)
     elif model_name == "ResNet34":
