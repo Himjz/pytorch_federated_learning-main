@@ -19,7 +19,6 @@ from fed_baselines.client_scaffold import ScaffoldClient
 from fed_baselines.server_base import FedServer
 from fed_baselines.server_fednova import FedNovaServer
 from fed_baselines.server_scaffold import ScaffoldServer
-from postprocessing.recorder import Recorder
 from preprocessing.fed_dataloader import UniversalDataLoader
 
 json_types = (list, dict, str, int, float, bool, type(None))
@@ -64,7 +63,6 @@ def fed_run():
     random.seed(config["system"]["i_seed"])
 
     client_dict = {}
-    recorder = Recorder()
     time_and_metrics_recorder = {
         'client_train_avg': [],
         'server_train': [],
@@ -78,14 +76,13 @@ def fed_run():
         'loss': []
     }
 
-    dataloader = UniversalDataLoader(root='../data',
+    dataloader = UniversalDataLoader(root='./data',
                                      num_client=config["system"]["num_client"],
                                      num_local_class=config["system"]["num_local_class"],
                                      dataset_name=config["system"]["dataset"],
                                      seed=config["system"]["i_seed"])
 
     dataloader.load()
-
     trainset_config, testset = dataloader.divide()
     info = (dataloader.num_classes, dataloader.image_size, dataloader.in_channels)
     max_acc = 0
@@ -232,20 +229,12 @@ def fed_run():
         time_and_metrics_recorder['f1'].append(f1)
         time_and_metrics_recorder['loss'].append(avg_loss)
 
-        recorder.res['server']['iid_accuracy'].append(accuracy)
-        recorder.res['server']['train_loss'].append(avg_loss)
 
         if max_acc < accuracy:
             max_acc = accuracy
         pbar.set_description(
             f'Global Round: {global_round} | Train loss: {avg_loss:.4f} | Accuracy: {accuracy:.4f} | Max Acc: {max_acc:.4f}'
         )
-
-        # 保存结果文件（优化命名）
-        # 主结果文件
-        main_result_path = os.path.join(res_root, f"{base_filename}_result.json")
-        with open(main_result_path, "w") as jsfile:
-            json.dump(recorder.res, jsfile, cls=PythonObjectEncoder)
 
         # 时间与指标文件
         time_metrics_path = os.path.join(res_root, f"{base_filename}_time_metrics.json")

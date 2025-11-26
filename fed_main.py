@@ -22,7 +22,7 @@ from fed_baselines.client_scaffold import ScaffoldClient
 from fed_baselines.server_base import FedServer
 from fed_baselines.server_fednova import FedNovaServer
 from fed_baselines.server_scaffold import ScaffoldServer
-from postprocessing.recorder import Recorder
+
 from preprocessing.fed_dataloader import UniversalDataLoader
 
 json_types = (list, dict, str, int, float, bool, type(None))
@@ -127,7 +127,6 @@ class FedMain:
         self.client_dict = {}
         self.fed_server = None
         self.dataloader = None
-        self.recorder = Recorder()
         self.time_metrics = self._init_time_metrics()
 
         # 网络与连接管理（增强功能但保持接口兼容）
@@ -673,18 +672,14 @@ class FedMain:
             self.time_metrics['f1'].append(metrics['f1'])
             self.time_metrics['loss'].append(metrics['avg_loss'])
 
-            self.recorder.res['server']['iid_accuracy'].append(metrics['accuracy'])
-            self.recorder.res['server']['train_loss'].append(metrics['avg_loss'])
+
 
     def save_results(self):
         """保存当前所有结果到JSON文件（保持原始接口）"""
         # 动态更新文件名（包含实际客户端数量）
         current_filename = self._generate_base_filename()
 
-        # 主结果文件
-        main_path = os.path.join(self.res_root, f"{current_filename}_result.json")
-        with open(main_path, "w") as f:
-            json.dump(self.recorder.res, f, cls=PythonObjectEncoder)
+
 
         # 时间与指标文件
         time_metrics_path = os.path.join(self.res_root, f"{current_filename}_time_metrics.json")
